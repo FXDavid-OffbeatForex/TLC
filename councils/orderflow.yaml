@@ -1,0 +1,11 @@
+# Example custom council (PRD §1.11). Run: "convene the orderflow council on <symbol>"
+# Members resolve my_legends/<id>.md first, then the canonical tlc/legends/<id>.md.
+name: orderflow
+description: Modern order-flow (smart-money) blended with classic structure & tape.
+members:
+  - wyckoff        # core: accumulation/distribution structure
+  - livermore      # core: pivotal points + tape
+  - ict_ob         # custom: order blocks / FVG / liquidity sweeps (my_legends/)
+chairman:
+  consensus_threshold: 0.60   # a touch looser than the 0.65 default
+weights: {}                   # public default: neutral (1.0 each)

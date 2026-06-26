@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m tlc.spec_lint my_legends/ict_ob.md)",
+      "Bash(python3 -m tlc.spec_lint tlc/legends/dow.md tlc/legends/wyckoff.md tlc/legends/gann.md tlc/legends/demark.md)",
+      "Bash(python3 -m tlc.council list)",
+      "Bash(python3 -m tlc.council show orderflow)",
+      "Bash(python3 -m pytest tests/ -q)",
+      "WebFetch(domain:www.interserver.net)",
+      "Bash(python3 -m pytest -q)"
+    ]
+  }
+}

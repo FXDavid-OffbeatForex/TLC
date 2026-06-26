@@ -1,0 +1,3 @@
+# TLC public tier — runtime deps are minimal; the deterministic core is stdlib-only.
+PyYAML>=6.0      # config.yaml loading
+pytest>=7.0      # tests (dev)

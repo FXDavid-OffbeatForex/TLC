@@ -1,0 +1,80 @@
+# TLC — Trading Legends Council · example config
+# Copy to config.yaml and adjust. Public defaults are neutral (no edge baked in).
+
+# Timeframe the council analyzes when none is given on the command.
+default_anchor_timeframe: 1h
+
+# Frames fetched for the market packet (anchor + HTFs the multi-TF legends use).
+frames: ["15m", "1h", "4h", "1d"]
+bars_per_frame: 200
+atr_period: 14
+
+# Chairman: minimum weighted one-side agreement to issue a trade (else NO_TRADE).
+consensus_threshold: 0.65
+
+# Per-legend vote multipliers. PUBLIC DEFAULT = 1.0 for everyone (omit to keep 1.0).
+# Tuned weights are the premium edge and live in a gitignored file — keep these neutral.
+weights: {}
+#   wyckoff: 1.0
+#   gann: 1.0
+
+# Where LocalJsonSink writes ballots/verdicts/outcomes.
+data_dir: data
+
+# ── Data platforms (PRD §1.10) ───────────────────────────────────────────────
+# Which data sources are available. List one or both. With one enabled the
+# router collapses to it (every symbol — even forex — goes there). With both,
+# symbols auto-route by asset class and a per-call token (`tv` / `mt5`) overrides.
+enabled_platforms: [mt5]          # e.g. [mt5, tradingview] to use both
+default_platform: mt5             # fallback when auto-route can't decide
+
+platforms:
+  mt5:
+    provider: mt5
+    symbol_suffix: ""             # broker quirk: set "zero" → EURUSD becomes EURUSDzero
+    asset_classes: [forex, metals, indices]
+  tradingview:
+    provider: tvremix
+    endpoint: https://tvremix.xyz/api/mcp/v1
+    # tvr_… key lives in .env as TVR_API_KEY (gitignored), never here.
+    asset_classes: [stocks, crypto]
+    exchange_map: {}             # per-symbol overrides, e.g. { AAPL: "NASDAQ:AAPL" }
+
+routing:                          # asset class → platform (first enabled match wins)
+  forex: mt5
+  metals: mt5
+  indices: mt5
+  stocks: tradingview
+  crypto: tradingview
+
+# ── Scheduled mode / alerts / engines (PRD §2.13–2.17) ───────────────────────
+# How a scheduled fire (cron) produces a verdict:
+#   agent → runs your coding-agent CLI headless (uses your subscription)  ← default
+#   api   → runs tlc.orchestrator on your own LLM key (OpenRouter/Anthropic in .env)
+engine: agent
+agent_cmd: "claude -p"            # the CLI invoked when engine: agent
+
+alerts:
+  enabled: []                     # [telegram] to push scheduled verdicts (token in .env)
+  telegram:
+    quiet_no_trade: true          # stay silent on NO_TRADE (only ping on real signals)
+
+# tvremix budget guard — tvremix only; MT5 has no rate limit or cache. {} disables.
+rate_limits:
+  tradingview:
+    per_minute: 20
+    per_hour: 200
+    per_day: 1500
+tv_cache_seconds: 300             # min sane TV interval (smallest-bar cache; warn below this)
+
+orchestrator:                     # engine: api
+  provider: openrouter            # openrouter | anthropic
+models:                           # tier → concrete model id (cheap legends, better Chairman)
+  cheap: openai/gpt-4o-mini
+  mid: anthropic/claude-3.5-sonnet
+  council: anthropic/claude-3.5-sonnet
+
+# Monetization links surfaced by the VPS calculator (tlc/vps_calc.py).
+vps_plans:
+  interserver_affiliate: "https://www.interserver.net/vps/?id=579551"   # TV/Linux lane
+  windows_calculator: "https://offbeatforex.com/best-forex-vps/"        # MT5/Windows lane

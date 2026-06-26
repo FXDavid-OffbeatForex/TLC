@@ -1,0 +1,31 @@
+# Local config and the proprietary edge (premium) — never commit
+config.yaml
+weights.tuned.yaml
+.env
+
+# Premium / private spec — keep off GitHub
+PRD-PREMIUM.md
+
+# Local sink data (ballots / verdicts / outcomes)
+data/
+*.jsonl
+
+# Generated artifacts
+signals*.csv
+*.packet.json
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# User-authored legends are private (your strategy stays yours).
+# The shipped example + dir README are the only tracked exceptions.
+my_legends/*
+!my_legends/ict_ob.md
+!my_legends/README.md
+
+# The cloned data dependency (kept separate; users clone their own)
+MBT/

@@ -160,17 +160,31 @@ def test_rate_limiter_persists_across_instances(tmp_path):
 def test_format_verdict_long():
     msg = format_verdict({
         "decision": "LONG", "symbol": "EURUSD", "platform": "mt5", "consensus": 0.83,
-        "entry": 1.1, "stop": 1.09, "target": 1.13, "rr": 2.0,
-        "for": ["wyckoff", "dow"], "against": ["demark"],
+        "entry": 1.085, "stop": 1.081, "target": 1.094, "rr": 2.25, "size_fraction": 0.61,
+        "for": ["wyckoff", "dow"], "against": ["demark"], "abstain": ["gann", "oneil"],
     })
     assert "LONG" in msg and "EURUSD" in msg and "83%" in msg
-    assert "wyckoff" in msg and "demark" in msg
+    # display names, not raw ids
+    assert "Wyckoff" in msg and "Dow" in msg and "DeMark" in msg
+    assert "O'Neil" in msg                      # abstain, pretty name
+    # full roll-call present
+    assert "For" in msg and "Against" in msg and "Abstain" in msg
+    assert "2 for · 1 against · 2 abstain" in msg
+    assert "▓" in msg                            # consensus bar
 
 
-def test_format_verdict_no_trade():
-    msg = format_verdict({"decision": "NO_TRADE", "symbol": "EURUSD",
+def test_format_verdict_no_trade_shows_rollcall():
+    msg = format_verdict({"decision": "NO_TRADE", "symbol": "EURUSD", "consensus": 0.5,
+                          "for": ["dow"], "against": ["gann"], "abstain": ["wilder"],
                           "rationale": "split"})
-    assert "NO TRADE" in msg
+    assert "NO TRADE" in msg and "split" in msg
+    assert "Dow" in msg and "Gann" in msg and "Wilder" in msg
+
+
+def test_format_verdict_escapes_html():
+    msg = format_verdict({"decision": "NO_TRADE", "symbol": "A&B",
+                          "rationale": "1 < 2 & ok"})
+    assert "A&amp;B" in msg and "1 &lt; 2" in msg
 
 
 def test_telegram_quiet_no_trade_suppresses(monkeypatch):

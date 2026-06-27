@@ -13,54 +13,114 @@ scheduled run can fan out to LocalJsonSink AND Telegram with no special-casing.
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import urllib.error
 import urllib.request
-from typing import Optional
+from typing import List, Optional
 
 API_BASE = "https://api.telegram.org"
+_RULE = "──────────────────"
+
+# Pretty display names for the core 10; custom legends fall back to Title Case.
+_DISPLAY = {
+    "dow": "Dow", "wyckoff": "Wyckoff", "livermore": "Livermore",
+    "elliott": "Elliott", "gann": "Gann", "demark": "DeMark",
+    "wilder": "Wilder", "hosoda": "Ichimoku", "weinstein": "Weinstein",
+    "oneil": "O'Neil",
+}
 
 
 class TelegramError(RuntimeError):
     pass
 
 
+def _esc(s: object) -> str:
+    return html.escape(str(s), quote=False)
+
+
+def _name(legend_id: str) -> str:
+    return _DISPLAY.get(legend_id, str(legend_id).replace("_", " ").title())
+
+
+def _names(ids: List[str]) -> str:
+    return ", ".join(_name(i) for i in ids) if ids else "none"
+
+
+def _bar(frac: float, n: int = 10) -> str:
+    """A 10-cell progress bar for the consensus level."""
+    try:
+        frac = max(0.0, min(1.0, float(frac)))
+    except (TypeError, ValueError):
+        frac = 0.0
+    filled = round(frac * n)
+    return "▓" * filled + "░" * (n - filled)
+
+
+def _fmt_px(v: object) -> str:
+    if v is None:
+        return "—"
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    return f"{f:.6f}".rstrip("0").rstrip(".") or "0"
+
+
 def format_verdict(verdict: dict) -> str:
-    """Render a verdict as a compact Telegram (Markdown) message."""
+    """Render a verdict as a rich Telegram (HTML) message with a full roll-call."""
     decision = verdict.get("decision", "?")
-    symbol = verdict.get("symbol", "?")
+    symbol = _esc(verdict.get("symbol", "?"))
     platform = verdict.get("platform", "")
-    plat = f" · {platform}" if platform else ""
-    consensus = verdict.get("consensus", 0.0)
+    plat = f" <i>({_esc(platform)})</i>" if platform else ""
+    consensus = verdict.get("consensus", 0.0) or 0.0
+    for_l = verdict.get("for", []) or []
+    against = verdict.get("against", []) or []
+    abstain = verdict.get("abstain", []) or []
 
     if decision == "NO_TRADE":
-        head = f"⚪ *NO TRADE* — {symbol}{plat}"
-        why = verdict.get("rationale", "Council split / below threshold.")
-        return f"{head}\n_{why}_"
+        lines = [
+            f"⚪ <b>NO TRADE</b> · <b>{symbol}</b>{plat}",
+            _RULE,
+            f"📊 Consensus {consensus:.0%}",
+            _bar(consensus),
+        ]
+    else:
+        emoji = "🟢" if decision == "LONG" else "🔴"
+        lines = [
+            f"{emoji} <b>{decision}</b> · <b>{symbol}</b>{plat}",
+            _RULE,
+            f"📊 <b>Consensus {consensus:.0%}</b>",
+            _bar(consensus),
+        ]
+        entry = verdict.get("entry")
+        if entry is not None:
+            rows = [
+                f"{'Entry':<7}{_fmt_px(entry)}",
+                f"{'Stop':<7}{_fmt_px(verdict.get('stop'))}",
+                f"{'Target':<7}{_fmt_px(verdict.get('target'))}",
+            ]
+            if verdict.get("rr") is not None:
+                rows.append(f"{'R:R':<7}{verdict['rr']}")
+            size = verdict.get("size_fraction")
+            if size is not None:
+                rows.append(f"{'Size':<7}{float(size):.0%}")
+            lines += ["", "<pre>" + "\n".join(rows) + "</pre>"]
 
-    arrow = "🟢" if decision == "LONG" else "🔴"
-    lines = [
-        f"{arrow} *{decision}* — {symbol}{plat}   ({consensus:.0%} consensus)",
+    # Roll-call — always shown (who voted yes / no / abstained).
+    lines += [
+        "",
+        f"🗳 <b>Council</b> · {len(for_l)} for · {len(against)} against · {len(abstain)} abstain",
+        f"✅ <b>For</b> — {_esc(_names(for_l))}",
+        f"❌ <b>Against</b> — {_esc(_names(against))}",
+        f"⚪ <b>Abstain</b> — {_esc(_names(abstain))}",
     ]
-    entry, stop, target = verdict.get("entry"), verdict.get("stop"), verdict.get("target")
-    if entry is not None:
-        lines.append(f"entry `{entry}`  ·  stop `{stop}`  ·  target `{target}`")
-    rr = verdict.get("rr")
-    size = verdict.get("size_fraction")
-    bits = []
-    if rr is not None:
-        bits.append(f"R:R `{rr}`")
-    if size is not None:
-        bits.append(f"size `{size}`")
-    if bits:
-        lines.append("  ·  ".join(bits))
-    for_l = verdict.get("for", [])
-    against = verdict.get("against", [])
-    if for_l:
-        lines.append(f"for: {', '.join(for_l)}")
-    if against:
-        lines.append(f"against: {', '.join(against)}")
+
+    if decision == "NO_TRADE" and verdict.get("rationale"):
+        lines += ["", f"<i>{_esc(verdict['rationale'])}</i>"]
+    if verdict.get("created_at"):
+        lines += ["", f"🕐 {_esc(verdict['created_at'])}"]
     return "\n".join(lines)
 
 
@@ -102,7 +162,7 @@ class TelegramSink:
         payload = json.dumps({
             "chat_id": self.chat_id,
             "text": text,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }).encode("utf-8")
         req = urllib.request.Request(

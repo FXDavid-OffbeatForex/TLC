@@ -9,8 +9,9 @@ manages `crontab`; on Windows it emits the `schtasks` command (Task Scheduler).
 Each entry is tagged with a TLC marker so we only ever touch our own lines, and a
 registry (`data/schedules.json`) records what's installed.
 
-Pure helpers (parse_interval, to_cron_expr, fires_per_day, build_command,
-registry I/O) are import-safe and unit-tested; only `install`/`uninstall` shell out.
+Pure helpers (parse_interval, to_cron_expr, pick_offset, fires_per_day,
+build_command, registry I/O) are import-safe and unit-tested; only
+`install`/`uninstall` shell out.
 
 CLI:
     python3 -m tlc.cron set EURUSD 1h --every 1h [--platform tv] [--council orderflow]
@@ -66,14 +67,47 @@ def parse_interval(spec: str) -> Interval:
     return Interval(n, unit)
 
 
-def to_cron_expr(interval: Interval) -> str:
-    """Interval → 5-field cron expression (minute hour dom month dow)."""
+def to_cron_expr(interval: Interval, offset: int = 0) -> str:
+    """Interval → 5-field cron expression (minute hour dom month dow).
+
+    `offset` staggers the fire so jobs sharing an interval don't all launch on
+    the same tick (the thundering-herd that spikes RAM and the tvremix budget).
+    It is a minute phase; `offset=0` reproduces the original, un-staggered
+    expression exactly (so existing schedules are byte-identical)."""
     n = interval.n
+    off = int(offset)
     if interval.unit == "m":
-        return f"*/{n} * * * *"
+        # Phase within the n-minute cycle: minutes off, off+n, off+2n, …
+        off %= n
+        return f"*/{n} * * * *" if off == 0 else f"{off}-59/{n} * * * *"
     if interval.unit == "h":
-        return f"0 */{n} * * *"
-    return f"0 0 */{n} * *"               # days
+        off %= 60                         # minutes past the hour
+        return f"{off} */{n} * * *"
+    off %= 60                             # days: stagger the minute, fire at hour 0
+    return f"{off} 0 */{n} * *"
+
+
+def stagger_window(interval: Interval) -> int:
+    """Width (minutes) over which same-interval jobs are spread. For minute
+    schedules that's the cycle itself; for hour/day schedules we vary the minute
+    field only (keeping which hours/days fire), so the window is 60."""
+    return interval.n if interval.unit == "m" else 60
+
+
+def pick_offset(used: "list[int]", window: int) -> int:
+    """Choose a minute-offset landing in the largest gap of already-used offsets,
+    treated as a circular [0, window) timeline. First job → 0 (un-staggered);
+    each later job bisects the widest gap (→ 0, 30, 15, 45, … for hourly)."""
+    pts = sorted({int(u) % window for u in used})
+    if not pts:
+        return 0
+    best_start, best_gap = pts[0], -1
+    for i, a in enumerate(pts):
+        nxt = pts[i + 1] if i + 1 < len(pts) else pts[0] + window
+        gap = nxt - a
+        if gap > best_gap:
+            best_gap, best_start = gap, a
+    return (best_start + best_gap // 2) % window
 
 
 def fires_per_day(interval: Interval) -> float:
@@ -81,12 +115,16 @@ def fires_per_day(interval: Interval) -> float:
     return 86400.0 / interval.seconds
 
 
-def schtasks_command(name: str, interval: Interval, command: str) -> str:
-    """The Windows Task Scheduler equivalent (printed for the user to run)."""
+def schtasks_command(name: str, interval: Interval, command: str, offset: int = 0) -> str:
+    """The Windows Task Scheduler equivalent (printed for the user to run).
+
+    A non-zero `offset` adds `/st 00:MM` so staggered jobs start at different
+    minutes, mirroring the cron offset. `offset=0` keeps the original string."""
     sc = {"m": "minute", "h": "hourly", "d": "daily"}[interval.unit]
+    start = f" /st 00:{int(offset) % 60:02d}" if int(offset) else ""
     return (
         f'schtasks /create /tn "TLC_{name}" /tr "{command}" '
-        f'/sc {sc} /mo {interval.n} /f'
+        f'/sc {sc} /mo {interval.n}{start} /f'
     )
 
 
@@ -327,22 +365,35 @@ def _cmd_set(args) -> int:
             agent_cmd = " ".join(shlex.quote(p) for p in parts)
 
     name = make_name(symbol, timeframe)
+
+    # Stagger: spread same-interval jobs across the cycle so they don't all fire
+    # on the same tick (the herd that spikes RAM and the tvremix budget). An
+    # explicit --offset wins; otherwise auto-pick the widest gap. Exclude this
+    # job's own name so re-installing it can reclaim its slot.
+    window = stagger_window(interval)
+    others = [e for e in load_registry(data_dir) if e.get("name") != name]
+    if args.offset is not None:
+        offset = int(args.offset) % window
+    else:
+        used = [e.get("offset", 0) for e in others if e.get("interval") == interval.label]
+        offset = pick_offset(used, window)
+
     command = build_command(
         symbol, timeframe, interval,
         engine=engine, platform=args.platform or "", council=args.council or "",
         agent_cmd=agent_cmd, data_dir=data_dir,
     )
-    cron_expr = to_cron_expr(interval)
+    cron_expr = to_cron_expr(interval, offset)
     entry = {
         "name": name, "symbol": symbol, "timeframe": timeframe,
         "interval": interval.label, "engine": engine,
         "platform": args.platform or "", "council": args.council or "",
-        "cron_expr": cron_expr, "command": command,
+        "offset": offset, "cron_expr": cron_expr, "command": command,
     }
 
     if is_windows():
         print("Windows — run this once in an elevated terminal to register the task:\n")
-        print("  " + schtasks_command(name, interval, command))
+        print("  " + schtasks_command(name, interval, command, offset))
     else:
         install(name, cron_expr, command)
         print(f"installed cron: {cron_expr}  ({name})")
@@ -350,6 +401,10 @@ def _cmd_set(args) -> int:
             _configure_headless_settings(args.platform or resolved_platform)
     upsert_registry(entry, data_dir)
     print(f"  → {command}")
+    siblings = sum(1 for e in others if e.get("interval") == interval.label)
+    if offset and siblings:
+        print(f"  → staggered +{offset}m past the tick "
+              f"(spread across {siblings + 1} jobs on the {interval.label} cycle)")
     print(f"\nFires {fires_per_day(interval):.0f}×/day. Tip: `python3 -m tlc.vps_calc` to size a VPS.")
     return 0
 
@@ -366,6 +421,7 @@ def _cmd_list(args) -> int:
             f"[{e['platform']}]" if e.get("platform") else "",
             f"council={e['council']}" if e.get("council") else "",
             f"engine={e.get('engine','agent')}",
+            f"@+{e['offset']}m" if e.get("offset") else "",
         ]))
         print(f"• {e['name']:<16} {e['symbol']} {e['timeframe']} every {e['interval']}  {extra}")
     return 0
@@ -396,6 +452,9 @@ def _main() -> int:
     s.add_argument("--platform", choices=["tv", "mt5"], default="")
     s.add_argument("--council", default="")
     s.add_argument("--engine", choices=["agent", "api"], default="")
+    s.add_argument("--offset", type=int, default=None,
+                   help="minute offset past the tick (default: auto-stagger to "
+                        "avoid colliding with same-interval jobs)")
     s.set_defaults(func=_cmd_set)
 
     sub.add_parser("list", help="list schedules").set_defaults(func=_cmd_list)

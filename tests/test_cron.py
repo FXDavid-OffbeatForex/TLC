@@ -51,6 +51,72 @@ def test_fires_per_day():
     assert cron.fires_per_day(cron.parse_interval("1d")) == 1
 
 
+# ---- staggering ----------------------------------------------------------
+
+def test_to_cron_expr_offset_zero_is_unchanged():
+    # offset=0 must reproduce the original expression byte-for-byte
+    for spec in ("15m", "1h", "2h", "3d"):
+        iv = cron.parse_interval(spec)
+        assert cron.to_cron_expr(iv, 0) == cron.to_cron_expr(iv)
+
+
+@pytest.mark.parametrize("spec,offset,expr", [
+    ("1h", 30, "30 */1 * * *"),       # hourly, fire at :30
+    ("2h", 12, "12 */2 * * *"),
+    ("15m", 7, "7-59/15 * * * *"),    # phase within the 15-min cycle
+    ("15m", 15, "*/15 * * * *"),      # offset == cycle wraps back to 0
+    ("1d", 45, "45 0 */1 * *"),
+    ("1h", 90, "30 */1 * * *"),       # minute offset wraps mod 60
+])
+def test_to_cron_expr_with_offset(spec, offset, expr):
+    assert cron.to_cron_expr(cron.parse_interval(spec), offset) == expr
+
+
+def test_stagger_window():
+    assert cron.stagger_window(cron.parse_interval("15m")) == 15
+    assert cron.stagger_window(cron.parse_interval("1h")) == 60
+    assert cron.stagger_window(cron.parse_interval("1d")) == 60
+
+
+def test_pick_offset_bisects_largest_gap():
+    # First job un-staggered, then each new job halves the widest gap.
+    used = []
+    picks = []
+    for _ in range(4):
+        o = cron.pick_offset(used, 60)
+        picks.append(o)
+        used.append(o)
+    assert picks == [0, 30, 15, 45]       # evenly spread across the hour
+
+
+def test_pick_offset_minute_window():
+    used = [0]
+    assert cron.pick_offset(used, 15) == 7   # half of a 15-min cycle
+
+
+def test_pick_offset_tolerates_legacy_entries():
+    # Old registry rows have no offset → treated as 0; new pick avoids the herd.
+    assert cron.pick_offset([0, 0], 60) == 30
+
+
+def test_schtasks_command_offset():
+    base = cron.schtasks_command("EURUSD_1h", cron.parse_interval("2h"), "do thing")
+    assert "/st" not in base                                  # offset 0 unchanged
+    staggered = cron.schtasks_command("EURUSD_1h", cron.parse_interval("2h"), "do thing", 7)
+    assert "/st 00:07" in staggered and "/sc hourly /mo 2" in staggered
+
+
+def test_five_hourly_jobs_do_not_collide():
+    # The user's scenario: 5 symbols every hour must land on distinct minutes.
+    used, minutes = [], []
+    for _ in range(5):
+        o = cron.pick_offset(used, 60)
+        used.append(o)
+        expr = cron.to_cron_expr(cron.parse_interval("1h"), o)
+        minutes.append(expr.split()[0])
+    assert len(set(minutes)) == 5         # all distinct fire-minutes
+
+
 # ---- command building ----------------------------------------------------
 
 def test_build_command_agent():

@@ -30,10 +30,15 @@ A scheduled fire is LLM-driven, so it runs through an **engine** (`config.yaml �
      button (no terminal needed).
 3. Install the cron (idempotent per name; crontab on Linux/macOS, schtasks on Windows):
    `python3 -m tlc.cron set <symbol> <tf> --every <iv> [--platform tv|mt5] [--council N] [--engine api]`
-4. Confirm the cron expression + the exact command, and how to stop it.
+   - **Auto-staggered:** jobs sharing an interval are spread across the cycle (1st at the
+     tick, then +30m, +15m, +45m, …) so they don't all fire at once — this smooths the RAM
+     spike and the tvremix per-minute peak. Override with `--offset <minutes>` if needed.
+4. Confirm the cron expression + the exact command, and how to stop it. If the user is adding
+   several symbols, mention they'll fire on different minutes (shown as `@+Nm` in `list`).
 
 ## List — `list`
-`python3 -m tlc.cron list` — every installed schedule (symbol, tf, interval, platform, engine).
+`python3 -m tlc.cron list` — every installed schedule (symbol, tf, interval, platform, engine,
+plus `@+Nm` stagger offset when non-zero).
 
 ## Stop — `stop <name>`
 `python3 -m tlc.cron stop <name>` — removes the cron entry (and registry row). On Windows it

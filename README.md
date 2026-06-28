@@ -1,9 +1,22 @@
 # TLC — Trading Legends Council
 
-> A council of legendary traders & analysts — each rebuilt as an independent AI agent — that reads
-> real MT5 data, votes on a trade, and a **Chairman** issues one risk-managed verdict.
+> Ten legendary traders and analysts — each rebuilt as an independent AI agent — read the same
+> chart, vote blind, and a **Chairman** issues one risk-managed verdict.
 
 Ask **one** master for their read, or convene the whole room.
+
+TLC is the analytical engine behind the **[FXDavid YouTube channel](https://www.youtube.com/@fxdavid9392)**
+— a place where technical analysis is taught through the lens of the greats. The same legends that
+appear in the videos are the ones sitting on this council. Watch the channel to see how each one
+thinks, then run the council yourself on any symbol.
+
+**What TLC does:**
+- Pulls live bar data from your MT5 broker or TradingView
+- Runs each legend as a separate, isolated AI subagent — they cannot see each other's reasoning
+- Every legend produces a structured ballot: direction, entry, stop, target, conviction, thesis
+- The Chairman aggregates all ballots under a strict consensus rule and issues a single verdict (`LONG / SHORT / NO_TRADE`) with position sizing
+- Verdicts are logged, scored, and optionally pushed to Telegram on a schedule
+- You can forge your own legends from famous names or plain-English strategies, and assemble custom councils
 
 ---
 
@@ -196,11 +209,11 @@ are small shareable lists.
 
 ## Setup — no API key required
 
-In the public tier, **your coding agent is the LLM.** The council runs as subagents on
-your own plan (Claude Code, Codex, Cursor, etc.).
+**Your coding agent is the LLM.** The council runs as subagents on your own plan
+(Claude Code, Codex, Cursor, Windsurf, etc.) — no key from us needed.
 
-("No API key required" means *from us* — the council runs on your own agent. The
-TradingView platform uses a free third-party key; the MT5 platform uses none.)
+("No API key required" means *from TLC* — the council runs on your own agent subscription. The
+TradingView platform uses a free third-party key from tvremix.xyz; the MT5 platform uses none.)
 
 **Setup is done by the agent, in chat — no terminal needed.**
 
@@ -382,18 +395,10 @@ python3 -m pytest tests/ -q   # 113 tests, ~0.3s
 
 ---
 
-## Open-core
+## More from FXDavid
 
-This repo ships the full working **public tier** — all 10 legend specs, the Chairman,
-the ballot/packet contracts, the council builder, scheduled mode (`/schedule` cron),
-both execution engines (your agent CLI **or** your own API key), the Telegram alert
-sink, the VPS calculator, and the scoring tool.
-
-The line is **"you run it" vs "we host it"** — not a feature wall. The **premium tier**
-removes the ops: *managed* continuous scanning, the Discord signal feed, privately tuned
-weights, and the hosted leaderboard — all built on the same contracts through the `Sink`
-interface (`tlc/sinks/`). Public defaults are neutral weights (1.0 each); the tuned values
-and hosted data are not in this repo. See [PRD.md](PRD.md).
+- **YouTube:** [youtube.com/@fxdavid9392](https://www.youtube.com/@fxdavid9392) — TA education through the lens of the legends on this council
+- **MT5 data bridge:** [MBT](https://github.com/FXDavid-OffbeatForex/MBT) — the MCP server TLC uses to pull live broker bars
 
 ---
 

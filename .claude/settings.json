@@ -24,7 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /home/linuxlite/Desktop/TA-Legends-Council && python3 -m tlc.splash"
+            "command": "python3 -m tlc.splash"
           }
         ]
       }

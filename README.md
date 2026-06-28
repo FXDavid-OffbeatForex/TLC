@@ -4,11 +4,12 @@
 
 <h1>⚖️ TLC — Trading Legends Council</h1>
 
-<p><b>Ten legendary traders, each rebuilt as an independent AI agent.</b><br>
+<p><b>Ten legendary traders, each rebuilt as an independent Claude MCP subagent.</b><br>
 They read the same chart, vote <i>blind</i>, and a <b>Chairman</b> issues one risk-managed verdict.</p>
 
 <p>
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
+  <img alt="Claude MCP" src="https://img.shields.io/badge/Claude-MCP%20subagents-cc785c">
   <img alt="Data: TradingView · MT5" src="https://img.shields.io/badge/Data-TradingView%20%C2%B7%20MT5-e8b64c">
   <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-3ddc84">
   <a href="https://fxdavid-offbeatforex.github.io/TLC/"><img alt="VPS Sizer — live" src="https://img.shields.io/badge/%E2%96%B6_VPS_Sizer-live-5b8cff"></a>
@@ -20,20 +21,23 @@ They read the same chart, vote <i>blind</i>, and a <b>Chairman</b> issues one ri
   <a href="#data-platforms--mt5-or-tradingview">Data platforms</a> ·
   <a href="#schedule--alerts--247-signals-to-telegram">Schedule</a> ·
   <a href="#setup--no-api-key-required">Setup</a> ·
-  <a href="#how-it-works">How it works</a>
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#faq">FAQ</a>
 </sub>
 
 </div>
 
 ---
 
-Ask **one** master for their read, or convene the whole room.
+**TLC is a multi-agent AI trading analysis framework** built for Claude Code and any MCP-compatible coding agent. Ten legendary traders — Wyckoff, Gann, Elliott, DeMark, and six others — each run as an independent Claude subagent, reading the same chart in parallel and blind to one another. A Chairman aggregates their ballots into one risk-managed signal (`LONG / SHORT / NO_TRADE`) with entry, stop, target, and position size.
+
+Ask **one** legend for their read, or convene the whole room.
 
 **What TLC does:**
-- Pulls live bar data from your MT5 broker or TradingView
-- Runs each legend as a separate, isolated AI subagent — they cannot see each other's reasoning
+- Pulls live bar data from your MT5 broker or TradingView (via MCP servers)
+- Runs each legend as a separate, isolated Claude subagent — they cannot see each other's reasoning
 - Every legend produces a structured ballot: direction, entry, stop, target, conviction, thesis
-- The Chairman aggregates all ballots under a strict consensus rule and issues a single verdict (`LONG / SHORT / NO_TRADE`) with position sizing
+- The Chairman aggregates all ballots under a strict consensus rule and issues a single verdict with position sizing
 - Verdicts are logged, scored, and optionally pushed to Telegram on a schedule
 - You can forge your own legends from famous names or plain-English strategies, and assemble custom councils
 
@@ -435,6 +439,28 @@ python3 -m tlc.scoring.score data/ballots.jsonl signals_wyckoff.csv --legend wyc
 
 # Then run MBT's backtest tool on the CSV (needs MT5)
 ```
+
+---
+
+## FAQ
+
+**Does this place real trades?**
+No. TLC outputs signals — direction, entry, stop, target — but never connects to a broker account. You decide whether to act on them.
+
+**Do I need to pay for an LLM API key?**
+No key from TLC. The council runs on your existing Claude Code (or Cursor/Windsurf) subscription. The TradingView path needs a free `tvr_…` key from [tvremix.xyz](https://tvremix.xyz); the MT5 path needs none.
+
+**What is MCP and why does TLC use it?**
+MCP (Model Context Protocol) is Anthropic's open standard for giving AI agents access to external tools. TLC uses two MCP servers: [MBT](https://github.com/FXDavid-OffbeatForex/MBT) for live MT5 broker bars and tvremix for TradingView data. Each legend runs as an isolated Claude MCP subagent — sandboxed from the others until the Chairman aggregates all ballots.
+
+**Does it work with stocks, crypto, and forex?**
+Yes. TradingView covers stocks (NASDAQ, NYSE), crypto (Binance, Coinbase), and forex. MT5 covers broker-native forex and metals. Enable both and TLC auto-routes by asset class.
+
+**Can I use my own trading strategy?**
+Yes. `/forge-legend` turns a plain-English description of any strategy into a votable legend — your ICT setup, your sweep-and-reclaim entry, whatever you trade. Custom legends live in `my_legends/` (gitignored) and slot into any council.
+
+**Does TLC work with Cursor / Windsurf / Codex?**
+Any MCP-compatible coding agent works. The setup flow and slash commands are written for Claude Code, but the underlying Python runs anywhere and any agent that can call MCP tools can drive it.
 
 ---
 

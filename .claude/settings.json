@@ -16,5 +16,18 @@
     "Write",
     "Edit",
     "mcp__MBT__get_ohlcv"
-  ]
+  ],
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /home/linuxlite/Desktop/TA-Legends-Council && python3 -m tlc.splash"
+          }
+        ]
+      }
+    ]
+  }
 }

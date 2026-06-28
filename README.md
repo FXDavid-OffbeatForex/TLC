@@ -1,8 +1,6 @@
 <div align="center">
 
-<!-- HERO IMAGE: generate with the nano-banana prompt, save as docs/hero.png, then uncomment ↓
 <img src="docs/hero.png" alt="Trading Legends Council" width="840">
--->
 
 <h1>⚖️ TLC — Trading Legends Council</h1>
 

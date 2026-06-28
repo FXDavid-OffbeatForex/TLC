@@ -354,7 +354,13 @@ Either way the verdict and alerts are identical — `api` just swaps the brain f
 
 ### Where to run it 24/7 (and how big)
 The machine must stay on. Size it first — the calculator does the exact feed/cost math and
-recommends a plan:
+recommends a plan.
+
+**▶ [Open the interactive VPS Sizer](https://fxdavid-offbeatforex.github.io/TLC/)** — pick your
+jobs, interval, engine and platform; it shows the cheapest InterServer plan (with price + a
+one-click order link) and flags any feed-budget overrun. No terminal needed.
+
+Prefer the CLI? Same math, headless:
 
 ```bash
 python3 -m tlc.vps_calc --jobs 3 --interval 1h --engine api --platform tv

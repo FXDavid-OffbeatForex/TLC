@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TLC · VPS Sizer — size a server for your scheduled council</title>
+<meta name="description" content="Size a Linux (InterServer) or Windows VPS for a scheduled Trading Legends Council. Exact feed-budget + cost math, instant plan recommendation." />
+<style>
+  :root{
+    --bg:#0a0b10; --bg2:#0f1118; --panel:#13151f; --panel2:#181b27;
+    --line:#252938; --line2:#30354a;
+    --txt:#e7e9f3; --mut:#8b90a8; --mut2:#5d6178;
+    --gold:#e8b64c; --gold2:#f5cf7a;
+    --green:#3ddc84; --red:#ff6b6b; --blue:#5b8cff;
+    --r:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(232,182,76,.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(91,140,255,.10), transparent 55%),
+      var(--bg);
+    color:var(--txt);
+    font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    min-height:100vh;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:40px 22px 80px}
+
+  /* header */
+  header{text-align:center;margin-bottom:34px}
+  .logo{
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:11px;line-height:1.15;color:var(--gold);
+    white-space:pre;display:inline-block;text-align:left;
+    text-shadow:0 0 24px rgba(232,182,76,.35);margin-bottom:14px;
+  }
+  h1{font-size:28px;margin:6px 0 6px;letter-spacing:-.4px}
+  h1 .g{background:linear-gradient(90deg,var(--gold),var(--gold2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--mut);max-width:620px;margin:0 auto;font-size:15px}
+
+  /* layout */
+  .grid{display:grid;grid-template-columns:380px 1fr;gap:22px;align-items:start}
+  @media(max-width:840px){.grid{grid-template-columns:1fr}}
+
+  .card{
+    background:linear-gradient(180deg,var(--panel),var(--bg2));
+    border:1px solid var(--line);border-radius:var(--r);
+    padding:22px;box-shadow:0 18px 50px -24px rgba(0,0,0,.7);
+  }
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:1.3px;color:var(--mut);margin:0 0 18px;font-weight:600}
+
+  /* form */
+  .field{margin-bottom:20px}
+  .field:last-child{margin-bottom:0}
+  label.lbl{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--txt);margin-bottom:9px;font-weight:600}
+  label.lbl .hint{color:var(--mut2);font-weight:400;font-size:12px}
+
+  /* segmented toggle */
+  .seg{display:grid;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:5px}
+  .seg.two{grid-template-columns:1fr 1fr}
+  .seg button{
+    appearance:none;border:0;background:transparent;color:var(--mut);
+    padding:9px 10px;border-radius:7px;cursor:pointer;font:inherit;font-weight:600;font-size:13px;
+    transition:.16s;
+  }
+  .seg button .s{display:block;font-weight:400;font-size:11px;color:var(--mut2);margin-top:1px}
+  .seg button:hover{color:var(--txt)}
+  .seg button[aria-pressed="true"]{background:linear-gradient(180deg,var(--panel2),var(--panel));color:var(--txt);box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 6px 16px -10px #000}
+  .seg button[aria-pressed="true"] .s{color:var(--gold)}
+
+  /* steppers + selects */
+  .stepper{display:flex;align-items:stretch;background:var(--bg);border:1px solid var(--line);border-radius:11px;overflow:hidden}
+  .stepper button{appearance:none;border:0;background:transparent;color:var(--mut);font-size:20px;width:46px;cursor:pointer;transition:.15s}
+  .stepper button:hover{background:var(--panel2);color:var(--gold)}
+  .stepper input{flex:1;min-width:0;text-align:center;background:transparent;border:0;color:var(--txt);font:inherit;font-size:16px;font-weight:600;-moz-appearance:textfield}
+  .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:11px;color:var(--txt);font:inherit;font-size:15px;font-weight:600;padding:12px 14px;cursor:pointer}
+  select:focus,.stepper:focus-within{outline:none;border-color:var(--line2)}
+
+  /* results */
+  .results{display:flex;flex-direction:column;gap:18px}
+
+  /* hero plan */
+  .plan{
+    position:relative;overflow:hidden;
+    background:
+      radial-gradient(600px 200px at 100% 0,rgba(232,182,76,.14),transparent 60%),
+      linear-gradient(180deg,var(--panel2),var(--bg2));
+    border:1px solid var(--line2);border-radius:var(--r);padding:24px;
+  }
+  .plan .tag{font-size:12px;text-transform:uppercase;letter-spacing:1.4px;color:var(--gold);font-weight:700;margin-bottom:4px}
+  .plan .name{font-size:23px;font-weight:700;margin:0 0 2px}
+  .plan .price{font-size:40px;font-weight:800;letter-spacing:-1px;line-height:1.1}
+  .plan .price small{font-size:16px;color:var(--mut);font-weight:600}
+  .specs{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 18px}
+  .spec{background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:13px;min-width:0}
+  .spec b{display:block;font-size:15px;font-weight:700}
+  .spec span{color:var(--mut2);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .cta{
+    display:flex;align-items:center;justify-content:center;gap:9px;width:100%;
+    background:linear-gradient(180deg,var(--gold2),var(--gold));color:#241a05;
+    border:0;border-radius:12px;padding:15px;font:inherit;font-weight:800;font-size:16px;
+    text-decoration:none;cursor:pointer;transition:.16s;box-shadow:0 12px 30px -12px rgba(232,182,76,.6);
+  }
+  .cta:hover{transform:translateY(-1px);box-shadow:0 16px 36px -12px rgba(232,182,76,.75)}
+  .cta .arr{transition:.16s}.cta:hover .arr{transform:translateX(3px)}
+  .plan .fine{text-align:center;color:var(--mut2);font-size:11.5px;margin-top:11px}
+
+  /* stat rows */
+  .stat{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .stat .ico{width:34px;height:34px;flex:none;border-radius:9px;display:grid;place-items:center;font-size:16px;background:var(--bg)}
+  .stat .body{flex:1;min-width:0}
+  .stat .k{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px}
+  .stat .v{font-size:16px;font-weight:700;margin-top:1px}
+  .stat .v small{color:var(--mut);font-weight:500;font-size:12px}
+  .pill{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap}
+  .pill.ok{background:rgba(61,220,132,.13);color:var(--green)}
+  .pill.warn{background:rgba(255,107,107,.13);color:var(--red)}
+  .warns{margin:8px 0 0;padding:0;list-style:none}
+  .warns li{color:var(--red);font-size:12.5px;margin-top:4px;padding-left:16px;position:relative}
+  .warns li::before{content:"⚠";position:absolute;left:0}
+
+  /* slice ladder */
+  .ladder{display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px}
+  .ladder .s{
+    flex:none;min-width:104px;background:var(--panel);border:1px solid var(--line);
+    border-radius:11px;padding:11px 13px;text-align:left;transition:.15s
+  }
+  .ladder .s.pick{border-color:var(--gold);background:linear-gradient(180deg,rgba(232,182,76,.10),var(--panel))}
+  .ladder .s .n{font-size:12px;color:var(--mut2);margin-bottom:3px}
+  .ladder .s.pick .n{color:var(--gold);font-weight:700}
+  .ladder .s .p{font-size:19px;font-weight:800}
+  .ladder .s .d{font-size:11.5px;color:var(--mut);margin-top:2px}
+
+  .note{font-size:12.5px;color:var(--mut2);text-align:center;margin-top:2px}
+  footer{text-align:center;color:var(--mut2);font-size:12.5px;margin-top:44px;line-height:1.7}
+  footer a{color:var(--mut);text-decoration:none;border-bottom:1px solid var(--line2)}
+  footer a:hover{color:var(--gold)}
+  .reveal{animation:rise .35s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+<div class="logo">████████ ██       ██████
+   ██    ██      ██        TRADING LEGENDS COUNCIL
+   ██    ██      ██        ten legends · one verdict
+   ██    ███████  ██████</div>
+    <h1>VPS <span class="g">Sizer</span></h1>
+    <p class="sub">Running the council on a schedule? Tell us your plan and we'll size the
+      cheapest server that fits — with exact feed-budget and cost math, not guesswork.</p>
+  </header>
+
+  <div class="grid">
+    <!-- ───────── INPUTS ───────── -->
+    <form class="card" id="form" autocomplete="off">
+      <h2>Your schedule</h2>
+
+      <div class="field">
+        <label class="lbl">Symbols / jobs <span class="hint" id="jobsHint">running on a clock</span></label>
+        <div class="stepper">
+          <button type="button" data-step="jobs" data-d="-1" aria-label="fewer">−</button>
+          <input id="jobs" type="number" min="1" max="200" value="3" inputmode="numeric" />
+          <button type="button" data-step="jobs" data-d="1" aria-label="more">+</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="lbl">Re-run every <span class="hint" id="ivHint"></span></label>
+        <select id="interval">
+          <option value="15m">15 minutes</option>
+          <option value="30m">30 minutes</option>
+          <option value="1h" selected>1 hour</option>
+          <option value="2h">2 hours</option>
+          <option value="4h">4 hours</option>
+          <option value="1d">1 day</option>
+          <option value="3d">3 days</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="lbl">Engine</label>
+        <div class="seg two" id="engine" role="group">
+          <button type="button" data-v="agent" aria-pressed="true">Agent<span class="s">your CLI subscription</span></button>
+          <button type="button" data-v="api" aria-pressed="false">API<span class="s">your own LLM key</span></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="lbl">Data platform</label>
+        <div class="seg two" id="platform" role="group">
+          <button type="button" data-v="tv" aria-pressed="true">TradingView<span class="s">stocks · crypto · fx</span></button>
+          <button type="button" data-v="mt5" aria-pressed="false">MT5<span class="s">broker terminal</span></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="lbl">Council size <span class="hint">legends per vote</span></label>
+        <div class="stepper">
+          <button type="button" data-step="council" data-d="-1" aria-label="fewer">−</button>
+          <input id="council" type="number" min="1" max="40" value="10" inputmode="numeric" />
+          <button type="button" data-step="council" data-d="1" aria-label="more">+</button>
+        </div>
+      </div>
+    </form>
+
+    <!-- ───────── RESULTS ───────── -->
+    <div class="results" id="results"></div>
+  </div>
+
+  <footer>
+    Feed-budget & cost math is exact · server sizing is a heuristic.<br/>
+    Mirrors <code>python3 -m tlc.vps_calc</code> in the
+    <a href="https://github.com/FXDavid-OffbeatForex/TLC">TLC repo</a>.
+    InterServer / VPS links are affiliate links that support the project.
+  </footer>
+</div>
+
+<script>
+/* ───── math: a faithful port of tlc/vps_calc.py ───── */
+const AFFILIATE = "https://www.interserver.net/vps/?id=579551";
+const WINDOWS_VPS = "https://offbeatforex.com/best-forex-vps/";
+const FRAMES = 4;                                  // 15m/1h/4h/1d per convening
+const TV_CAPS = {per_minute:20, per_hour:200, per_day:1500};
+const TOK_PER_LEGEND = 12600, USD_PER_MTOK = 0.60;
+const UNIT_SEC = {m:60, h:3600, d:86400};
+
+const parseInterval = s => { const m=String(s).match(/^(\d+)([mhd])$/); return {n:+m[1],u:m[2],sec:(+m[1])*UNIT_SEC[m[2]]}; };
+const firesPerDay   = iv => 86400 / iv.sec;
+const ceil = Math.ceil;
+
+function slice(n){ n=Math.max(1,Math.min(32,n)); return {slices:n,cores:ceil(n/2),ram:2*n,ssd:40*n,transfer:2*n,price:3*n}; }
+function smallestFor(ram,cores){ for(let n=1;n<=32;n++){const s=slice(n); if(s.ram>=ram&&s.cores>=cores) return s;} return slice(32); }
+
+function resources(engine,c){
+  let ram,cores;
+  if(engine==="api"){ ram=0.25+0.13*c; cores=Math.max(1,ceil(0.3*c)); }
+  else              { ram=0.5 +0.8 *c; cores=Math.max(1,ceil(0.6*c)); }
+  return {ram:Math.round(ram*100)/100, cores};
+}
+function feedBudget(jobs,iv,platform){
+  if(platform==="mt5") return null;
+  const fpd=firesPerDay(iv);
+  const per_day=jobs*fpd*FRAMES, per_hour=jobs*(fpd/24)*FRAMES, per_min=jobs*FRAMES;
+  const w=[];
+  if(per_day >TV_CAPS.per_day ) w.push(`${Math.round(per_day)} calls/day exceeds ${TV_CAPS.per_day}/day`);
+  if(per_hour>TV_CAPS.per_hour) w.push(`${Math.round(per_hour)} calls/hour exceeds ${TV_CAPS.per_hour}/hour`);
+  if(per_min >TV_CAPS.per_minute) w.push(`${per_min} calls/min (peak) exceeds ${TV_CAPS.per_minute}/min`);
+  return {per_day:Math.round(per_day), per_hour:Math.round(per_hour*10)/10, per_min, ok:!w.length, warnings:w};
+}
+function llmCost(jobs,iv,council){
+  const tpd=jobs*firesPerDay(iv)*council*TOK_PER_LEGEND;
+  const month=tpd/1e6*USD_PER_MTOK*30;
+  return {tokens:Math.round(tpd), low:Math.round(month*0.5*100)/100, high:Math.round(month*2*100)/100};
+}
+
+/* ───── state + UI ───── */
+const S={jobs:3, interval:"1h", engine:"agent", platform:"tv", council:10};
+const $=s=>document.querySelector(s);
+
+function clamp(el){ const v=+el.value; const lo=+el.min,hi=+el.max; el.value=Math.max(lo,Math.min(hi,isNaN(v)?lo:v)); return +el.value; }
+
+document.querySelectorAll("[data-step]").forEach(b=>b.onclick=()=>{
+  const inp=$("#"+(b.dataset.step==="jobs"?"jobs":"council"));
+  inp.value=+inp.value + (+b.dataset.d); S[b.dataset.step==="jobs"?"jobs":"council"]=clamp(inp); render();
+});
+["jobs","council"].forEach(id=>$("#"+id).oninput=e=>{ S[id]=clamp(e.target); render(); });
+$("#interval").onchange=e=>{ S.interval=e.target.value; render(); };
+["engine","platform"].forEach(grp=>$("#"+grp).querySelectorAll("button").forEach(btn=>btn.onclick=()=>{
+  $("#"+grp).querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed","false"));
+  btn.setAttribute("aria-pressed","true"); S[grp]=btn.dataset.v; render();
+}));
+
+const money=n=>"$"+n.toLocaleString(undefined,{maximumFractionDigits:2});
+const num=n=>n.toLocaleString();
+
+function render(){
+  const iv=parseInterval(S.interval);
+  const fpd=firesPerDay(iv);
+  const res=resources(S.engine,S.jobs);
+  const fb=feedBudget(S.jobs,iv,S.platform);
+  const cost=S.engine==="api"?llmCost(S.jobs,iv,S.council):null;
+
+  $("#jobsHint").textContent = `${(fpd*S.jobs).toLocaleString(undefined,{maximumFractionDigits:0})} convenings/day total`;
+  $("#ivHint").textContent   = `${fpd%1?fpd.toFixed(2):fpd}× per day`;
+
+  let html="";
+
+  /* deploy lane */
+  if(S.platform==="mt5"){
+    html += `<div class="plan reveal">
+      <div class="tag">Recommended · Windows lane</div>
+      <p class="name">MT5 needs a Windows VPS</p>
+      <p class="sub" style="margin:6px 0 0;color:var(--mut)">MetaTrader has to keep running, so the
+        council can't sit on a cheap Linux box. Size the Windows machine on our forex-VPS calculator.</p>
+      <div style="height:18px"></div>
+      <a class="cta" href="${WINDOWS_VPS}" target="_blank" rel="noopener">Size a Windows VPS <span class="arr">→</span></a>
+      <p class="fine">Opens offbeatforex.com · affiliate link</p>
+    </div>`;
+  } else {
+    const pick=smallestFor(res.ram,res.cores);
+    /* ladder: recommended ± neighbours */
+    const lo=Math.max(1,pick.slices-1), hi=Math.min(32,pick.slices+2);
+    let ladder="";
+    for(let n=lo;n<=hi;n++){ const s=slice(n);
+      ladder += `<div class="s${n===pick.slices?" pick":""}">
+        <div class="n">${n===pick.slices?"✓ ":""}${s.slices}-slice</div>
+        <div class="p">$${s.price}<span style="font-size:11px;color:var(--mut)">/mo</span></div>
+        <div class="d">${s.cores} core · ${s.ram} GB</div></div>`;
+    }
+    html += `<div class="plan reveal">
+      <div class="tag">Recommended plan</div>
+      <p class="name">InterServer · ${pick.slices}-slice</p>
+      <div class="price">$${pick.price}<small> / month</small></div>
+      <div class="specs">
+        <div class="spec"><b>${pick.cores}</b><span>vCPU core${pick.cores>1?"s":""}</span></div>
+        <div class="spec"><b>${pick.ram} GB</b><span>RAM</span></div>
+        <div class="spec"><b>${pick.ssd} GB</b><span>SSD</span></div>
+        <div class="spec"><b>${pick.transfer} TB</b><span>transfer</span></div>
+      </div>
+      <a class="cta" href="${AFFILIATE}" target="_blank" rel="noopener">Get this VPS on InterServer <span class="arr">→</span></a>
+      <p class="fine">From $3/mo · scale slices anytime · affiliate link supports TLC</p>
+    </div>
+    <div class="card" style="padding:18px">
+      <h2 style="margin-bottom:12px">Compare nearby plans</h2>
+      <div class="ladder">${ladder}</div>
+    </div>`;
+  }
+
+  /* feed budget */
+  if(fb){
+    html += `<div class="stat reveal">
+      <div class="ico">${fb.ok?"📡":"🚦"}</div>
+      <div class="body"><div class="k">TradingView feed budget</div>
+        <div class="v">${num(fb.per_day)} calls/day <small>· ${fb.per_hour}/hr · ${fb.per_min}/min peak</small></div>
+        ${fb.warnings.length?`<ul class="warns">${fb.warnings.map(w=>`<li>${w}</li>`).join("")}</ul>`:""}
+      </div>
+      <div class="pill ${fb.ok?"ok":"warn"}">${fb.ok?"within caps":"over caps"}</div>
+    </div>`;
+  } else {
+    html += `<div class="stat reveal"><div class="ico">📡</div>
+      <div class="body"><div class="k">Feed budget</div>
+        <div class="v">n/a <small>· MT5 broker feed has no rate limit or cache</small></div></div>
+      <div class="pill ok">no limit</div></div>`;
+  }
+
+  /* resources */
+  html += `<div class="stat reveal"><div class="ico">🧠</div>
+    <div class="body"><div class="k">Resource estimate · ${S.engine} engine</div>
+      <div class="v">~${res.cores} vCPU · ${res.ram} GB RAM <small>(heuristic)</small></div></div></div>`;
+
+  /* llm cost */
+  if(cost){
+    html += `<div class="stat reveal"><div class="ico">💸</div>
+      <div class="body"><div class="k">LLM cost · API engine</div>
+        <div class="v">~${money(cost.low)}–${money(cost.high)}<small>/mo · ${num(cost.tokens)} tok/day</small></div></div>
+      <div class="pill ok">estimate</div></div>`;
+  }
+
+  html += `<p class="note">Caps shown for TradingView: ${TV_CAPS.per_day.toLocaleString()}/day · ${TV_CAPS.per_hour}/hr · ${TV_CAPS.per_minute}/min.</p>`;
+
+  $("#results").innerHTML=html;
+}
+render();
+</script>
+</body>
+</html>

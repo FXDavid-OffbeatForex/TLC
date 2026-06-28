@@ -25,6 +25,9 @@ A scheduled fire is LLM-driven, so it runs through an **engine** (`config.yaml �
 2. **Run the calculator and show it** (resource + budget + plan, with the affiliate link):
    `python3 -m tlc.vps_calc --jobs <N> --interval <iv> --engine <agent|api> --platform <tv|mt5>`
    - TV → recommends an InterServer slice (Linux); MT5 → deep-links the Windows VPS calculator.
+   - For a non-technical user, also point them at the **interactive web sizer** —
+     <https://fxdavid-offbeatforex.github.io/TLC/> — same math, with a one-click order
+     button (no terminal needed).
 3. Install the cron (idempotent per name; crontab on Linux/macOS, schtasks on Windows):
    `python3 -m tlc.cron set <symbol> <tf> --every <iv> [--platform tv|mt5] [--council N] [--engine api]`
 4. Confirm the cron expression + the exact command, and how to stop it.

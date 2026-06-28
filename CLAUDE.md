@@ -170,7 +170,7 @@ Finally: "Ready! Try: **convene BTCUSD** or **what does Wyckoff think of EURUSD?
 | "what councils do I have?" / "show me the orderflow council" | `python3 -m tlc.council list` / `show <name>` |
 | "scan EURUSD every hour and alert me" · "run the council on BTC every 15m" · `/schedule …` | Set up a cron → `.claude/commands/schedule.md` |
 | "what's scheduled?" / "stop the EURUSD schedule" | `python3 -m tlc.cron list` / `stop <name>` |
-| "what VPS do I need?" / "size a server for 3 hourly jobs" | VPS calculator → `python3 -m tlc.vps_calc --jobs 3 --interval 1h --engine <agent\|api> --platform <tv\|mt5>` |
+| "what VPS do I need?" / "size a server for 3 hourly jobs" | VPS calculator → `python3 -m tlc.vps_calc --jobs 3 --interval 1h --engine <agent\|api> --platform <tv\|mt5>`. For a non-technical user, offer the interactive web sizer instead: <https://fxdavid-offbeatforex.github.io/TLC/> |
 | "score my ballots" / "how is Gann doing?" | Local scoring → `tlc/scoring/score.py` (+ MBT backtest) |
 
 Map legend names/nicknames to ids: dow, wyckoff, livermore, elliott, gann,
@@ -261,7 +261,9 @@ The user can run the council on a clock and get **Telegram** alerts — see
 
 **Always-on / VPS.** 24/7 schedules need a machine that stays up. Before installing a
 schedule, run the calculator and show the recommendation + link:
-`python3 -m tlc.vps_calc --jobs N --interval IV --engine E --platform P`.
+`python3 -m tlc.vps_calc --jobs N --interval IV --engine E --platform P`. For a
+non-technical user, point them at the **interactive web sizer** instead —
+<https://fxdavid-offbeatforex.github.io/TLC/> (same math, one-click order button, no terminal).
 - **TradingView** (api or agent) → **InterServer** Linux VPS (from $3/mo) — the calc picks a slice.
 - **MT5** → **Windows** VPS (MetaTrader must run) — the calc deep-links our Windows calculator.
 

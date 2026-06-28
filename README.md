@@ -5,11 +5,6 @@
 
 Ask **one** master for their read, or convene the whole room.
 
-TLC is the analytical engine behind the **[FXDavid YouTube channel](https://www.youtube.com/@fxdavid9392)**
-— a place where technical analysis is taught through the lens of the greats. The same legends that
-appear in the videos are the ones sitting on this council. Watch the channel to see how each one
-thinks, then run the council yourself on any symbol.
-
 **What TLC does:**
 - Pulls live bar data from your MT5 broker or TradingView
 - Runs each legend as a separate, isolated AI subagent — they cannot see each other's reasoning

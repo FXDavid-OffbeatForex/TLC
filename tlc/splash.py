@@ -17,6 +17,7 @@ CLI:
 """
 from __future__ import annotations
 
+import json
 import os
 import random
 import shutil
@@ -75,22 +76,52 @@ def _show_cursor(tty) -> None:
 _GOLD, _GREY, _WHITE = 220, 240, 231
 
 # ---------------------------------------------------------------------------
-# Once-per-session guard (1-hour TTL — proxy for "same session")
+# Once-per-session guard — dedup on Claude Code's session_id
 # ---------------------------------------------------------------------------
+# The UserPromptSubmit hook fires on EVERY prompt and receives a JSON payload
+# on stdin carrying a stable `session_id` (constant for the life of one
+# `claude` launch, new on the next). We show the splash the first time a
+# session_id appears and skip every later prompt in that same session — so it
+# fires once per new session, exactly as intended. A time-based guard can't
+# tell two real sessions apart inside its window; the session_id can.
 
-_FLAG = "/tmp/.tlc_splash"
-_SESSION_TTL = 3600  # seconds
+_SEEN = "/tmp/.tlc_splash_sessions"
+_MAX_SEEN = 50
 
 
-def _already_shown() -> bool:
-    """Return True if the splash fired within the last hour."""
+def _session_key() -> str | None:
+    """The current session's id from the hook's stdin JSON, or None when the
+    script is run manually (no piped payload)."""
+    if sys.stdin.isatty():
+        return None
     try:
-        if time.time() - os.path.getmtime(_FLAG) < _SESSION_TTL:
-            return True
+        data = sys.stdin.read()
+    except OSError:
+        return None
+    if not data.strip():
+        return None
+    try:
+        payload = json.loads(data)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return payload.get("session_id") or payload.get("transcript_path")
+
+
+def _already_shown(key: str) -> bool:
+    """True if this session already showed the splash. Records it otherwise,
+    keeping only the most recent _MAX_SEEN ids so the file can't grow forever."""
+    seen: list[str] = []
+    try:
+        with open(_SEEN) as fh:
+            seen = fh.read().split()
     except OSError:
         pass
+    if key in seen:
+        return True
+    seen.append(key)
     try:
-        open(_FLAG, "w").close()
+        with open(_SEEN, "w") as fh:
+            fh.write("\n".join(seen[-_MAX_SEEN:]) + "\n")
     except OSError:
         pass
     return False
@@ -103,7 +134,8 @@ def _should_run(force: bool = False) -> bool:
         return False
     if _w() <= 20 or _h() <= 10:
         return False
-    if _already_shown():
+    key = _session_key()
+    if key is not None and _already_shown(key):
         return False
     return True
 

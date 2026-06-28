@@ -246,15 +246,23 @@ client — terminal, IDE panel, or web).
 
 Purely for terminal die-hards. Instead of `claude`, start your session with the
 bundled launcher and you'll get a 3.5s "Thunderclap" intro before Claude Code
-takes over:
+takes over. Run it straight from any clone — no install needed:
 
 ```bash
-./tlc.sh                      # plays the splash, then runs `claude`
+./tlc.sh                      # plays the splash, then runs `claude` here
 ./tlc.sh convene EURUSD 1h    # args pass straight through
-
-# or alias it so plain `tlc` works from the repo:
-alias tlc='/path/to/TA-Legends-Council/tlc.sh'
 ```
+
+**Optional — a global `tlc` command.** If you'd rather type `tlc` than `./tlc.sh`:
+
+```bash
+./tlc.sh install              # one-time; copies the launcher into ~/.local/bin
+```
+
+This is clone-independent on purpose: it copies a generic launcher (it doesn't
+point at this repo), so you can delete a clone, pull a fresh one, `cd` into it
+and `tlc` still works — no reinstalling, nothing to dangle. The splash is read
+from whichever clone you're standing in, so fresh clones need no extra setup.
 
 It's Claude-Code-specific and terminal-only — the splash no-ops in non-interactive
 contexts (cron, `claude -p`, piped output, IDE panels) and respects `NO_COLOR`.

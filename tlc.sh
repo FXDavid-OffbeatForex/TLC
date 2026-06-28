@@ -1,40 +1,46 @@
 #!/usr/bin/env bash
 # TLC launcher — plays the optional Thunderclap intro, then hands off to Claude
-# Code. Running `claude` directly works exactly the same; this just adds the
-# animated splash for terminal users. The splash no-ops in any non-interactive
-# context (no /dev/tty) and respects NO_COLOR.
+# Code in your CURRENT directory. Works the same whether you run it as
+# `./tlc.sh` inside a clone or as the global `tlc` command from anywhere: it
+# never points at a fixed repo, it just adds the splash on top of `claude`.
 #
-#   ./tlc.sh                     # splash, then `claude`
+#   ./tlc.sh                     # splash, then `claude` in this folder
 #   ./tlc.sh convene EURUSD 1h   # args pass straight through to claude
 #
-# One-time: make `tlc` a global command (symlinks this into ~/.local/bin):
-#   ./tlc.sh install             # then just type `tlc` from anywhere
+# One-time, optional — a global `tlc` command:
+#   ./tlc.sh install
+# This copies the launcher into ~/.local/bin (a copy, not a symlink), so it is
+# clone-independent: delete a clone, pull a fresh one, `cd` in and `tlc` still
+# works — no reinstall, nothing to dangle. The splash is found in whatever
+# clone you're standing in, so a fresh clone needs no extra setup.
 set -euo pipefail
 
-# Resolve this script's real location, following symlinks, so the launcher
-# works both as `./tlc.sh` in the repo and as a `~/.local/bin/tlc` symlink.
-src="${BASH_SOURCE[0]}"
-while [ -h "$src" ]; do
-  dir="$(cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd)"
-  src="$(readlink "$src")"
-  [ "${src#/}" = "$src" ] && src="$dir/$src"
-done
-REPO="$(cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd)"
-
-# `tlc.sh install` — symlink this launcher into ~/.local/bin as `tlc`.
 if [ "${1:-}" = "install" ]; then
   bindir="$HOME/.local/bin"
+  dst="$bindir/tlc"
   mkdir -p "$bindir"
-  ln -sf "$REPO/tlc.sh" "$bindir/tlc"
-  echo "Installed: $bindir/tlc -> $REPO/tlc.sh"
+  src="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  if [ "$src" != "$dst" ]; then
+    rm -f "$dst"          # replace any old symlink/file with a fresh copy
+    cp "$src" "$dst"
+    chmod +x "$dst"
+  fi
+  cat <<'BANNER'
+
+████████ ██       ██████
+   ██    ██      ██        TRADING LEGENDS COUNCIL
+   ██    ██      ██        ten legends · one verdict
+   ██    ███████  ██████
+
+BANNER
+  echo "Installed: $dst (clone-independent)"
   case ":$PATH:" in
-    *":$bindir:"*) echo "You can now type 'tlc' from anywhere." ;;
-    *) echo "Note: $bindir is not on your PATH. Add this to your shell rc:"
+    *":$bindir:"*) echo "Type 'tlc' inside any TLC clone." ;;
+    *) echo "Note: $bindir is not on your PATH yet. Add this to your shell rc:"
        echo "  export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
   esac
   exit 0
 fi
 
-cd "$REPO"
-python3 -m tlc.splash || true   # never let the splash block the session
+python3 -m tlc.splash 2>/dev/null || true   # splash from the cwd's tlc package
 exec claude "$@"

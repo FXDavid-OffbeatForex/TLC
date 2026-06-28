@@ -239,6 +239,27 @@ After the one-time setup, restart your agent (so the MBT MCP loads) and start:
 **Timeframe formats accepted:** `M15`, `15m`, `15` → `15m` · `H1`, `1h` → `1h` ·
 `D1` → `1d` · `W1` → `1w`. Symbol is uppercased automatically.
 
+Every agent greets a new session by printing the **TLC banner** (works in any
+client — terminal, IDE panel, or web).
+
+### Optional: the `tlc` launcher — an animated intro
+
+Purely for terminal die-hards. Instead of `claude`, start your session with the
+bundled launcher and you'll get a 3.5s "Thunderclap" intro before Claude Code
+takes over:
+
+```bash
+./tlc.sh                      # plays the splash, then runs `claude`
+./tlc.sh convene EURUSD 1h    # args pass straight through
+
+# or alias it so plain `tlc` works from the repo:
+alias tlc='/path/to/TA-Legends-Council/tlc.sh'
+```
+
+It's Claude-Code-specific and terminal-only — the splash no-ops in non-interactive
+contexts (cron, `claude -p`, piped output, IDE panels) and respects `NO_COLOR`.
+Running `claude` directly is identical minus the animation.
+
 ---
 
 ## Data platforms — MT5 *or* TradingView

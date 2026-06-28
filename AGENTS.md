@@ -6,6 +6,24 @@ setup for a new user.
 
 ---
 
+## Session-start banner — print this on the first reply
+
+On the **first turn of a new session only**, before anything else (the first-run
+check below, any greeting, the setup flow), print the TLC banner verbatim inside
+a fenced code block so it renders monospaced:
+
+```
+████████ ██       ██████
+   ██    ██      ██        TRADING LEGENDS COUNCIL
+   ██    ██      ██        ten legends · one verdict
+   ██    ███████  ██████
+```
+
+Print it once — on your first reply of the session, not on every message. After
+the banner, continue with the first-run check and the user's request as normal.
+
+---
+
 ## First-run check — do this before anything else
 
 **On every new session, before responding to any message (including greetings),

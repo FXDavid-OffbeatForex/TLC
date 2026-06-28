@@ -70,9 +70,9 @@ tv_cache_seconds: 300             # min sane TV interval (smallest-bar cache; wa
 orchestrator:                     # engine: api
   provider: openrouter            # openrouter | anthropic
 models:                           # tier → concrete model id (cheap legends, better Chairman)
-  cheap: openai/gpt-4o-mini
-  mid: anthropic/claude-3.5-sonnet
-  council: anthropic/claude-3.5-sonnet
+  cheap: anthropic/claude-haiku-4.5      # fast/cheap per-legend calls
+  mid: anthropic/claude-sonnet-4.6       # mid-tier (unused in public build)
+  council: anthropic/claude-sonnet-4.6   # Chairman aggregation
 
 # Monetization links surfaced by the VPS calculator (tlc/vps_calc.py).
 vps_plans:

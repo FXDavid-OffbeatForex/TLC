@@ -17,7 +17,7 @@ import sys
 from typing import List
 
 from .config import load_config
-from .sinks.telegram import TelegramSink, TelegramError
+from .sinks.telegram import TelegramSink
 
 
 def build_alert_sinks(config: dict) -> List[object]:
@@ -42,7 +42,9 @@ def notify_verdict(verdict: dict, config: dict) -> List[str]:
         try:
             sink.emit_verdict(verdict)
             fired.append(name)
-        except TelegramError as exc:
+        except Exception as exc:  # noqa: BLE001 — one bad channel must not abort
+            # A missing token, a network error, or a malformed verdict that trips
+            # formatting should degrade gracefully, not kill the scheduled fire.
             print(f"  alert via {name} failed: {exc}", file=sys.stderr)
     return fired
 

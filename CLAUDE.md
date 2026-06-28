@@ -1,9 +1,144 @@
-# TLC — agent dispatch guide
+# TLC — Claude Code dispatch guide
 
-This file is auto-loaded by Claude Code. It tells you (the agent) how to turn a
-user's request — **slash command _or_ plain English** — into the right TLC flow on
-the right data platform. The slash commands in `.claude/commands/` are shortcuts;
-this guide is what makes natural language work the same way.
+This file is auto-loaded by Claude Code and extends `AGENTS.md` with
+Claude-specific behaviour: in-chat setup, slash commands, and MCP tool calls.
+Read `AGENTS.md` for the universal dispatch table and council flow.
+
+## First-run check — do this before anything else
+
+**On every new session, before responding to any message (including greetings),
+run this check:**
+
+```bash
+ls .env config.yaml 2>/dev/null
+```
+
+- If **both exist** → proceed normally. No mention of setup needed.
+- If **either is missing** → run the setup flow below. Do not attempt to convene
+  or fetch data until setup is complete.
+
+### Golden rule for setup: never handle secrets in the chat
+
+**You must NEVER ask the user to paste an API key, token, or any secret into this
+conversation, and you must NEVER write a secret value into `.env` yourself.**
+Anything typed in the chat is sent to Anthropic and stored in the transcript — a
+credential must never go that route. Secrets are entered by the user **privately in their own editor** — you create a
+blank `.env` scaffold and offer to open it; they paste their keys there, and the
+values never pass through this conversation.
+
+What you *may* do in the chat: ask the non-secret choices (which platform, which
+engine, alerts yes/no), and write the **non-secret** files (`config.yaml`, and a
+placeholder `.env` with blank values).
+
+### Setup flow
+
+Greet the user, then ask these three non-secret questions one at a time (a brief
+confirmation after each). **Do not ask for any key or token.**
+
+**Q1 — Data platform**
+1. TradingView — stocks, crypto, forex (needs a free TVRemix key)
+2. MT5 / MetaTrader — forex, metals (no key, runs from their broker terminal)
+3. Both
+
+**Q2 — Scheduled engine** (optional — only for cron jobs later)
+1. agent — uses their Claude Code subscription (default, no key)
+2. api — uses their own OpenRouter / Anthropic key
+3. Skip for now
+
+**Q3 — Telegram alerts** (optional)
+Just ask yes / no — do **not** ask for the token here.
+
+Then write both files yourself — no terminal, no wizard.
+
+**1. Write `config.yaml`** — copy `config.example.yaml` (read it first), then set:
+- `enabled_platforms` / `default_platform` from Q1
+- `engine: api`, `orchestrator.provider`, and `models` if Q2 is api
+- `alerts.enabled: [telegram]` if Q3 is yes
+
+**1b. MT5 data bridge — only if Q1 is MT5 or Both.** MT5 bars come through **MBT**
+(`github.com/FXDavid-OffbeatForex/MBT`), an MCP server. Do **all** of this yourself
+with your tools — clone, register, edit configs. **Never tell the user to open a
+terminal or run a command** (assume they don't have one and wouldn't know how). The
+only thing they do is restart Claude Code at the end.
+
+- **i. Already working?** If the `mcp__MBT__get_ohlcv` tool is already in your
+  toolset, MBT is registered — skip straight to (v) the suffix step.
+- **ii. Get MBT.** MBT is gitignored, so a fresh TLC clone won't have it. If `./MBT`
+  is absent, clone it yourself: `git clone https://github.com/FXDavid-OffbeatForex/MBT.git MBT`.
+  Install its deps yourself: `pip install -r MBT/requirements.txt`. If
+  `MBT/config.yaml` is missing, create it from `MBT/config.example.yaml`. (Skip
+  MBT's MQL5 / indicator install steps — TLC only needs `get_ohlcv`.)
+- **iii. Register the server — write `.mcp.json`** at the TLC repo root (create it,
+  or merge into an existing one). `get_ohlcv` does `import MetaTrader5` (a
+  Windows-only package), so the launch command depends on the OS:
+  - **Windows:** `{"command": "python", "args": ["<abs>/MBT/mcp_server.py"]}`
+  - **Linux/macOS (MT5 under Wine):** must run under Wine-Python —
+    `{"command": "wine", "args": ["<wine-python.exe>", "<abs>/MBT/mcp_server.py"]}`.
+    Find the Wine python.exe in the user's prefix (e.g.
+    `~/.wine/drive_c/.../Python/*/python.exe`); if you can't locate it, ask the
+    user once for that path.
+
+    Shape: `{"mcpServers": {"mbt": {"command": "...", "args": ["..."]}}}`
+- **iv. Set the MT5 terminal path** (`mt5_path` in `MBT/config.yaml`). Offer two
+  ways — you do the writing either way:
+  - **A — they paste it:** "Right-click your MT5 shortcut → Properties → Target"
+    (that's the `terminal64.exe` path).
+  - **B — they name the broker, you find it:** search common locations
+    (`~/.wine/drive_c/Program Files*/**/terminal64.exe`, or `C:\Program Files\...`)
+    and propose the matches.
+- **v. Broker symbol suffix.** Ask if their broker appends one (e.g. `EURUSD` shows
+  as `EURUSDzero`). If yes, set `platforms.mt5.symbol_suffix` in TLC's `config.yaml`
+  (e.g. `zero`) and align `default_symbol` in `MBT/config.yaml`.
+- **vi. Restart.** Tell the user to **restart Claude Code** so the new `mbt` server
+  loads (approve it if prompted) — the only step they perform, no terminal. After
+  restart, confirm by fetching a few bars with `mcp__MBT__get_ohlcv`.
+
+**2. Write `.env`** — copy `.env.example` (read it first) with **every value left
+blank**. You are only scaffolding the file; never put a real secret in it and
+never ask the user for one in the chat. It should look like:
+```
+TVR_API_KEY=
+
+# --- Telegram alerts (optional; for scheduled mode) ---
+# 1. Message @BotFather on Telegram → /newbot → copy the token here.
+# 2. Send your new bot any message, then open:
+#    https://api.telegram.org/bot<TOKEN>/getUpdates  → copy "chat":{"id":...} here.
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+
+# --- engine=api only (optional) ---
+# Needed only if you run scheduled mode with engine: api (your own LLM key).
+# Pick the one matching config.yaml orchestrator.provider.
+OPENROUTER_API_KEY=
+ANTHROPIC_API_KEY=
+```
+(keep whatever comments `.env.example` actually has).
+
+**3. Tell them which blanks to fill**, based on their answers:
+- TradingView / Both → `TVR_API_KEY` (free at https://tvremix.xyz → account → API keys)
+- Telegram yes → `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`
+- api engine → `OPENROUTER_API_KEY` **or** `ANTHROPIC_API_KEY`
+- MT5 + agent + no Telegram → **nothing to fill — they're done, skip to the smoke-test.**
+
+**4. Offer to open the file** so they fill it in their editor (never the chat):
+> I've created your `.env`. Want me to open it so you can paste your key(s) in?
+> Your keys go straight into the file — they never pass through this chat. (yes / no)
+- **yes** → open it with `code .env` (or surface the clickable link [.env](.env)),
+  then: "Saved your key(s)? Tell me and I'll verify them."
+- **no** → "No problem — open [.env](.env) whenever you're ready."
+
+**5. Verify (optional, once they say they've filled it in).** Don't read any key
+from the chat — it's already in `.env`. Run the matching live test yourself
+(these load `.env` via `load_config`/`load_dotenv`, so a bare `python3 -c` that
+imports the provider directly will NOT see the key — use these exact forms):
+- `TVR_API_KEY` → `python3 -m tlc.data_desk BTCUSD 1h --platform tv` (fetches a real packet; errors if the key is missing/bad)
+- Telegram → `python3 -c "import os,json,urllib.request as R; from tlc.config import load_dotenv; load_dotenv(); t=os.environ.get('TELEGRAM_BOT_TOKEN'); c=os.environ.get('TELEGRAM_CHAT_ID'); print(R.urlopen(R.Request(f'https://api.telegram.org/bot{t}/sendMessage', data=json.dumps({'chat_id':c,'text':'TLC setup test'}).encode(), headers={'Content-Type':'application/json'})).read().decode())"` (sends a test message)
+
+Then smoke-test the config:
+```bash
+python3 -c "from tlc.config import load_config; c=load_config(); print('config OK, platform:', c['default_platform'])"
+```
+Finally: "Ready! Try: **convene BTCUSD** or **what does Wyckoff think of EURUSD?**"
 
 ## What the user might ask for
 

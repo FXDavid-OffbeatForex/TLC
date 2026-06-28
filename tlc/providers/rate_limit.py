@@ -10,10 +10,16 @@ MT5 (your broker feed) has no such cap — this guard is tvremix-only.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
+
+try:
+    import fcntl  # POSIX only; the tvremix lane is Linux. Absent on Windows.
+except ImportError:  # pragma: no cover - non-POSIX
+    fcntl = None  # type: ignore[assignment]
 
 # (window seconds, default cap, human label)
 WINDOWS: Tuple[Tuple[int, int, str], ...] = (
@@ -59,8 +65,28 @@ class RateLimiter:
 
     def _save(self, calls: List[float]) -> None:
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        with open(self.path, "w") as fh:
+        # Atomic: write a temp file and rename, so a crash mid-write can't leave
+        # a truncated counter that silently resets the budget.
+        tmp = f"{self.path}.{os.getpid()}.tmp"
+        with open(tmp, "w") as fh:
             json.dump({"calls": calls}, fh)
+        os.replace(tmp, self.path)
+
+    @contextlib.contextmanager
+    def _exclusive(self) -> Iterator[None]:
+        """Hold an inter-process exclusive lock across check+record, so two
+        concurrent cron fires can't both read 'under cap' and both record —
+        which would breach the tvremix key budget this guard exists to protect."""
+        if fcntl is None:                       # non-POSIX: no cross-proc lock
+            yield
+            return
+        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        with open(self.path + ".lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
     def _prune(self, calls: List[float], now: float) -> List[float]:
         cutoff = now - 86400          # keep only the last day
@@ -81,7 +107,9 @@ class RateLimiter:
             cap = self.caps[win]
             in_window = [t for t in calls if t > now - win]
             if len(in_window) >= cap:
-                reset_in = int(win - (now - min(in_window)))
+                # min() on an empty window (cap <= 0) would raise ValueError;
+                # fall back to the full window in that degenerate config.
+                reset_in = int(win - (now - min(in_window))) if in_window else win
                 raise RateLimitError(
                     f"tvremix {label} limit reached ({cap}/{label}). "
                     f"Retry in ~{max(reset_in, 1)}s, or space the schedule out."
@@ -94,6 +122,8 @@ class RateLimiter:
         self._save(calls)
 
     def check_and_record(self) -> None:
-        """The fetch path: refuse if over budget, otherwise count this call."""
-        self.check()
-        self.record()
+        """The fetch path: refuse if over budget, otherwise count this call.
+        check+record run under one exclusive lock so concurrent fires serialize."""
+        with self._exclusive():
+            self.check()
+            self.record()

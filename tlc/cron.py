@@ -24,6 +24,8 @@ import argparse
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -107,15 +109,19 @@ def build_command(
     python: str = "python3",
 ) -> str:
     """The shell command a cron fire runs. engine=agent invokes the user's agent
-    CLI; engine=api invokes the pure-Python orchestrator on the user's own key."""
+    CLI; engine=api invokes the pure-Python orchestrator on the user's own key.
+
+    Every interpolated field is shell-quoted: this string is persisted to the
+    crontab and executed by /bin/sh, so an unescaped symbol like `EURUSD"; rm -rf ~`
+    would otherwise be a command-injection vector."""
     repo_dir = repo_dir or os.getcwd()
-    council_flag = f" --council {council}" if council else ""
     log = os.path.join(data_dir, "cron.log")
 
     if engine == "api":
         plat = f" --platform {platform}" if platform in ("tv", "mt5") else ""
+        council_flag = f" --council {shlex.quote(council)}" if council else ""
         inner = (
-            f"{python} -m tlc.orchestrator {symbol} {timeframe}"
+            f"{python} -m tlc.orchestrator {shlex.quote(symbol)} {shlex.quote(timeframe)}"
             f"{plat}{council_flag} --alert"
         )
     else:  # agent: natural-language prompt to the coding-agent CLI
@@ -125,9 +131,9 @@ def build_command(
             f"convene {symbol} {timeframe}{plat}{council_phrase} "
             f"and send the verdict to telegram"
         )
-        inner = f'{agent_cmd} "{prompt}"'
+        inner = f"{agent_cmd} {shlex.quote(prompt)}"
 
-    return f"cd {repo_dir} && {inner} >> {log} 2>&1"
+    return f"cd {shlex.quote(repo_dir)} && {inner} >> {shlex.quote(log)} 2>&1"
 
 
 def make_name(symbol: str, timeframe: str) -> str:
@@ -165,6 +171,45 @@ def remove_from_registry(name: str, data_dir: str = "data") -> list:
     entries = [e for e in load_registry(data_dir) if e.get("name") != name]
     save_registry(entries, data_dir)
     return entries
+
+
+# --- headless settings ----------------------------------------------------
+
+_HEADLESS_BASE_TOOLS = ["Bash", "Read", "Write", "Edit"]
+_HEADLESS_MCP_TOOLS = {
+    "mt5": ["mcp__MBT__get_ohlcv"],
+    "tradingview": ["mcp__tvremix__get_ohlcv"],
+}
+
+
+def _configure_headless_settings(platform: str = "") -> None:
+    """Merge the convene tool-set into .claude/settings.json so headless cron
+    fires don't pause for permission prompts (no human present on a VPS)."""
+    settings_path = os.path.join(".claude", "settings.json")
+    os.makedirs(".claude", exist_ok=True)
+
+    existing: dict = {}
+    if os.path.exists(settings_path):
+        try:
+            with open(settings_path) as fh:
+                existing = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+
+    needed = list(_HEADLESS_BASE_TOOLS)
+    plat = (platform or "").lower()
+    if plat in _HEADLESS_MCP_TOOLS:
+        needed.extend(_HEADLESS_MCP_TOOLS[plat])
+    else:  # unknown or both — approve all MCP tools that may fire
+        for tools in _HEADLESS_MCP_TOOLS.values():
+            needed.extend(tools)
+
+    current = list(existing.get("allowedTools") or [])
+    existing["allowedTools"] = list(dict.fromkeys(current + needed))
+
+    with open(settings_path, "w") as fh:
+        json.dump(existing, fh, indent=2)
+    print("  → .claude/settings.json updated (headless allowedTools)")
 
 
 # --- crontab management (Unix) -------------------------------------------
@@ -227,19 +272,69 @@ def is_windows() -> bool:
 
 def _cmd_set(args) -> int:
     from .config import load_config
+    from .normalize import canonical_symbol, canonical_timeframe
+    from .providers.routing import resolve_platform
     cfg = load_config(args.config)
     data_dir = cfg.get("data_dir", "data")
+
+    # Validate the free-text fields before they reach a persisted shell command.
+    try:
+        symbol = canonical_symbol(args.symbol)
+        timeframe = canonical_timeframe(args.timeframe)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.council and not re.fullmatch(r"[A-Za-z0-9_-]+", args.council):
+        print("error: council name must be alphanumeric/underscore/hyphen", file=sys.stderr)
+        return 2
+
     interval = parse_interval(args.every)
+
+    # tvremix bars are cached (5m–1h by bar size); scheduling faster than the
+    # cache just re-reads stale data and burns the key budget (CLAUDE.md §TV).
+    resolved_platform = resolve_platform(symbol, cfg, explicit=args.platform or None)
+    if resolved_platform == "tradingview":
+        cache = int(cfg.get("tv_cache_seconds", 300))
+        if interval.seconds < cache:
+            print(
+                f"error: every {interval.label} is faster than tv_cache_seconds "
+                f"({cache}s) for a TradingView feed — bars are cached, so it would "
+                "re-read stale data. Use a longer interval or --platform mt5.",
+                file=sys.stderr,
+            )
+            return 2
+
     engine = args.engine or cfg.get("engine", "agent")
-    name = make_name(args.symbol, args.timeframe)
+
+    # Resolve the agent binary to an absolute path at install time.
+    # cron's minimal PATH won't include mise/nvm/homebrew/etc., so a bare
+    # "claude" silently fails at runtime. Catch it here instead.
+    agent_cmd = cfg.get("agent_cmd", "claude -p")
+    if engine == "agent" and not is_windows():
+        parts = shlex.split(agent_cmd)
+        binary = parts[0]
+        if not os.path.isabs(binary):
+            abs_bin = shutil.which(binary)
+            if not abs_bin:
+                print(
+                    f"error: '{binary}' not found on PATH — is Claude Code installed?\n"
+                    f"  Run 'which {binary}' to verify, or set agent_cmd in config.yaml\n"
+                    f"  to the absolute path (e.g. /home/user/.local/bin/claude -p).",
+                    file=sys.stderr,
+                )
+                return 2
+            parts[0] = abs_bin
+            agent_cmd = " ".join(shlex.quote(p) for p in parts)
+
+    name = make_name(symbol, timeframe)
     command = build_command(
-        args.symbol, args.timeframe, interval,
+        symbol, timeframe, interval,
         engine=engine, platform=args.platform or "", council=args.council or "",
-        agent_cmd=cfg.get("agent_cmd", "claude -p"), data_dir=data_dir,
+        agent_cmd=agent_cmd, data_dir=data_dir,
     )
     cron_expr = to_cron_expr(interval)
     entry = {
-        "name": name, "symbol": args.symbol, "timeframe": args.timeframe,
+        "name": name, "symbol": symbol, "timeframe": timeframe,
         "interval": interval.label, "engine": engine,
         "platform": args.platform or "", "council": args.council or "",
         "cron_expr": cron_expr, "command": command,
@@ -251,6 +346,8 @@ def _cmd_set(args) -> int:
     else:
         install(name, cron_expr, command)
         print(f"installed cron: {cron_expr}  ({name})")
+        if engine == "agent":
+            _configure_headless_settings(args.platform or resolved_platform)
     upsert_registry(entry, data_dir)
     print(f"  → {command}")
     print(f"\nFires {fires_per_day(interval):.0f}×/day. Tip: `python3 -m tlc.vps_calc` to size a VPS.")

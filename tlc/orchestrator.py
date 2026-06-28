@@ -25,10 +25,12 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple
 
-from .ballot import partition, validate_ballot
+from .ballot import partition
 from .chairman import aggregate
+from .config import DEFAULTS as _CONFIG_DEFAULTS
 from .config import load_config
 from .council import (council_settings, default_council, load_council,
                       resolve_members)
@@ -36,12 +38,8 @@ from .data_desk import build_market_packet
 from .notify import notify_verdict
 from .sinks import LocalJsonSink
 
-# A compact, model-agnostic default tier map. Override in config["models"].
-DEFAULT_MODELS = {
-    "cheap": "openai/gpt-4o-mini",
-    "mid": "anthropic/claude-3.5-sonnet",
-    "council": "anthropic/claude-3.5-sonnet",
-}
+# Single source of truth for the tier→model map (see config.DEFAULTS["models"]).
+DEFAULT_MODELS = dict(_CONFIG_DEFAULTS["models"])
 
 UNIVERSAL_PROMPT = """You are {display_name}, voting in the Trading Legends Council on {symbol} ({anchor_timeframe}).
 Use ONLY your own method (below). Do not adopt other schools. You vote BLIND.
@@ -53,11 +51,24 @@ Your method:
 {legend_spec_body}
 
 Rules:
-- Output ONE ballot JSON (the schema your Output section describes). Nothing else.
+- Output ONE ballot JSON using EXACTLY these field names. Nothing else.
 - If your setup is absent, vote FLAT — never force a trade.
 - A directional vote MUST include positive entry, invalidation, target.
   LONG: invalidation < entry < target. SHORT: target < entry < invalidation.
-- Always include "legend": "{legend_id}" and "platform": "{platform}".
+- FLAT votes: set conviction to 0.0 and omit entry/invalidation/target (or set to null).
+
+Required ballot schema (use these exact field names):
+{{
+  "legend": "{legend_id}",
+  "symbol": "{symbol}",
+  "timeframe": "{anchor_timeframe}",
+  "platform": "{platform}",
+  "direction": "LONG | SHORT | FLAT",
+  "conviction": 0.0,
+  "entry": null,
+  "invalidation": null,
+  "target": null
+}}
 """
 
 
@@ -71,19 +82,31 @@ def extract_ballot_json(text: str) -> dict:
     """Pull the ballot object out of an LLM reply (tolerates code fences / prose)."""
     if not text or not text.strip():
         raise OrchestratorError("empty model reply")
-    # Prefer a fenced ```json block; else the first balanced {...}.
+    # Prefer a fenced ```json block.
     fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    candidate = fence.group(1) if fence else None
-    if candidate is None:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise OrchestratorError("no JSON object in model reply")
-        candidate = text[start:end + 1]
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError as exc:
-        raise OrchestratorError(f"ballot JSON did not parse: {exc}") from exc
+    if fence:
+        try:
+            return json.loads(fence.group(1))
+        except json.JSONDecodeError:
+            pass  # fall through to scanning the raw text
+    # Otherwise scan for the first '{' that begins a balanced JSON object. Using
+    # raw_decode (not find/rfind) means a stray brace in prose — e.g. "per rule
+    # {note}, my ballot is {…}" — no longer swallows or breaks the real object.
+    decoder = json.JSONDecoder()
+    last_err: Optional[json.JSONDecodeError] = None
+    for i, ch in enumerate(text):
+        if ch != "{":
+            continue
+        try:
+            obj, _end = decoder.raw_decode(text[i:])
+        except json.JSONDecodeError as exc:
+            last_err = exc
+            continue
+        if isinstance(obj, dict):
+            return obj
+    if last_err is not None:
+        raise OrchestratorError(f"ballot JSON did not parse: {last_err}") from last_err
+    raise OrchestratorError("no JSON object in model reply")
 
 
 # --- spec loading ---------------------------------------------------------
@@ -187,8 +210,8 @@ def run_council(
     )
     packet_json = json.dumps(packet, ensure_ascii=False)
 
-    ballots: List[dict] = []
-    for legend_id, path in members:
+    def cast(member: Tuple[str, str]) -> Optional[dict]:
+        legend_id, path = member
         fm, body = _read_spec(path)
         prompt = UNIVERSAL_PROMPT.format(
             display_name=fm.get("display_name", legend_id),
@@ -202,11 +225,21 @@ def run_council(
         try:
             reply = llm_complete(prompt, _model_for(fm, models), config)
             ballot = extract_ballot_json(reply)
-            ballot.setdefault("legend", legend_id)
-            ballot.setdefault("platform", packet.get("platform", ""))
-            ballots.append(ballot)
         except OrchestratorError as exc:
             print(f"  {legend_id}: {exc}", file=sys.stderr)
+            return None
+        ballot.setdefault("legend", legend_id)
+        ballot.setdefault("platform", packet.get("platform", ""))
+        # Stamp the packet's as_of so down-projected MBT signals carry a real
+        # time (to_mbt_signal reads created_at) and the verdict timestamp is set.
+        ballot.setdefault("created_at", packet.get("as_of", ""))
+        return ballot
+
+    # Legends vote independently, so fan out concurrently — wall-clock collapses
+    # from N serial LLM round-trips to roughly one. Order is preserved via map().
+    max_workers = min(len(members), 8) or 1
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        ballots = [b for b in pool.map(cast, members) if b is not None]
 
     valid, invalid = partition(ballots)
     for bad in invalid:

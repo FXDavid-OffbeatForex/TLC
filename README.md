@@ -202,33 +202,31 @@ your own plan (Claude Code, Codex, Cursor, etc.).
 ("No API key required" means *from us* — the council runs on your own agent. The
 TradingView platform uses a free third-party key; the MT5 platform uses none.)
 
-What you need:
-
-1. **Your own agent** — Claude Code is the first-class experience.
-2. **At least one data platform** (see [Data platforms](#data-platforms--mt5-or-tradingview)):
-   - **MT5:** [MBT](https://github.com/FXDavid-OffbeatForex/MBT) + a running MT5 terminal
-     (broker demo is fine), registered as an MCP server so `get_ohlcv` is available; **or**
-   - **TradingView:** a free `tvr_…` key in `.env`, the tvremix MCP registered — no install.
+**Setup is done by the agent, in chat — no terminal needed.**
 
 ```bash
 git clone <this repo>
+cd TA-Legends-Council
 pip install -r requirements.txt
-cp config.example.yaml config.yaml   # choose enabled_platforms; set data_dir if needed
-cp .env.example .env                 # only if using TradingView — paste TVR_API_KEY
-# register your data MCP(s): MBT (see its README's `claude mcp add`) and/or tvremix
 ```
 
-Then in Claude Code: `/convene EURUSDzero 1h` or `/wyckoff EURUSDzero 15m`.
+Then open the folder in your AI agent (Claude Code, Cursor, Windsurf, Codex…) and
+say anything — "hi", "convene EURUSD", whatever. The agent detects missing config
+files and walks you through setup conversationally:
 
-**On Linux with MT5 under Wine:** the pyembed Python that ships with MT5 includes the
-`MetaTrader5` package. Run the MBT MCP server with:
-```bash
-WINEPREFIX=~/.wine DISPLAY=:0 wine ~/.wine/drive_c/pyembed/python.exe mcp_server.py
-```
+- Asks which data platform (MT5, TradingView, or both) and which optional features
+  (scheduled engine, Telegram alerts).
+- **MT5 path:** clones [MBT](https://github.com/FXDavid-OffbeatForex/MBT) if it isn't
+  already present, installs its deps, writes `.mcp.json` to register it as an MCP
+  server, and asks for your `mt5_path` (right-click your MT5 shortcut → Properties →
+  Target) or finds it for you if you name your broker.
+- **TradingView path:** writes a blank `.env` scaffold and offers to open it so you
+  can paste your free `tvr_…` key (from [tvremix.xyz](https://tvremix.xyz)) — the key
+  never passes through the chat.
+- Writes `config.yaml` and optionally verifies the connection.
 
-**MCP tool name:** commands assume the server is registered as `MBT` (tool
-`mcp__MBT__get_ohlcv`). If you used a different name, update `allowed-tools` in
-`.claude/commands/*.md`.
+After the one-time setup, restart your agent (so the MBT MCP loads) and start:
+`/convene EURUSDzero 1h` or `/wyckoff EURUSDzero 15m`.
 
 **Timeframe formats accepted:** `M15`, `15m`, `15` → `15m` · `H1`, `1h` → `1h` ·
 `D1` → `1d` · `W1` → `1w`. Symbol is uppercased automatically.
@@ -245,15 +243,10 @@ The council reads the same way regardless of where bars come from. You pick the
 | **MT5** (via MBT) | broker-native forex/metals + local backtest loop | MT5 terminal + MBT MCP |
 | **TradingView** (via [tvremix](https://tvremix.xyz)) | stocks, crypto, *and* forex — **no install** | a free `tvr_…` API key |
 
-A **TradingView-only** user needs no MT5, no MBT, no Wine, no broker — just the key:
-
-```bash
-cp .env.example .env          # then paste your TVR_API_KEY
-# enable it in config.yaml:  enabled_platforms: [tradingview]
-# register the remote MCP (name it `tvremix` so the mcp__tvremix__ tools resolve):
-claude mcp add --transport http tvremix https://tvremix.xyz/api/mcp/v1 \
-  --header "Authorization: Bearer $TVR_API_KEY"
-```
+A **TradingView-only** user needs no MT5, no MBT, no Wine, no broker — just the key.
+Open the repo in your agent, say hi, pick TradingView during setup, and paste your free
+`tvr_…` key (from [tvremix.xyz](https://tvremix.xyz)) into the `.env` file the agent
+creates. The agent registers the tvremix MCP server via `.mcp.json` automatically.
 
 With **both** enabled, symbols auto-route by asset class (forex → MT5, stocks/crypto
 → TradingView) and a trailing token overrides:

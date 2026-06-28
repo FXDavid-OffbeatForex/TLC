@@ -24,10 +24,13 @@ import argparse
 import math
 from typing import Dict, Optional
 
+from .config import DEFAULTS as _CONFIG_DEFAULTS
 from .cron import fires_per_day, parse_interval
 
 FRAMES_PER_CONVENING = 4                 # 15m / 1h / 4h / 1d
-TV_CAPS = {"per_minute": 20, "per_hour": 200, "per_day": 1500}
+# Single source of truth for the tvremix caps (also drives the live limiter via
+# config["rate_limits"]). estimate() overrides these from a user's config.
+TV_CAPS = dict(_CONFIG_DEFAULTS["rate_limits"]["tradingview"])
 
 # Default monetization links (override via config["vps_plans"]).
 DEFAULT_INTERSERVER_AFFILIATE = "https://www.interserver.net/vps/?id=579551"
@@ -72,21 +75,23 @@ def _resource_estimate(engine: str, concurrency: int) -> Dict[str, float]:
     return {"ram_gb": round(ram_gb, 2), "cores": cores}
 
 
-def feed_budget(jobs: int, interval, platform: str) -> Optional[Dict[str, object]]:
+def feed_budget(jobs: int, interval, platform: str,
+                caps: Optional[Dict[str, int]] = None) -> Optional[Dict[str, object]]:
     """Exact tvremix call budget. None for MT5 (no caps)."""
     if platform == "mt5":
         return None
+    caps = caps or TV_CAPS
     fpd = fires_per_day(interval)
     per_day = jobs * fpd * FRAMES_PER_CONVENING
     per_hour = jobs * (fpd / 24.0) * FRAMES_PER_CONVENING
     per_minute_peak = jobs * FRAMES_PER_CONVENING        # worst case: jobs aligned on a tick
     warnings = []
-    if per_day > TV_CAPS["per_day"]:
-        warnings.append(f"{per_day:.0f} calls/day exceeds {TV_CAPS['per_day']}/day")
-    if per_hour > TV_CAPS["per_hour"]:
-        warnings.append(f"{per_hour:.0f} calls/hour exceeds {TV_CAPS['per_hour']}/hour")
-    if per_minute_peak > TV_CAPS["per_minute"]:
-        warnings.append(f"{per_minute_peak} calls/min (peak) exceeds {TV_CAPS['per_minute']}/min")
+    if per_day > caps["per_day"]:
+        warnings.append(f"{per_day:.0f} calls/day exceeds {caps['per_day']}/day")
+    if per_hour > caps["per_hour"]:
+        warnings.append(f"{per_hour:.0f} calls/hour exceeds {caps['per_hour']}/hour")
+    if per_minute_peak > caps["per_minute"]:
+        warnings.append(f"{per_minute_peak} calls/min (peak) exceeds {caps['per_minute']}/min")
     return {
         "per_day": round(per_day),
         "per_hour": round(per_hour, 1),
@@ -126,6 +131,9 @@ def estimate(
     plans = (config or {}).get("vps_plans") or {}
     affiliate = plans.get("interserver_affiliate", DEFAULT_INTERSERVER_AFFILIATE)
     windows_link = plans.get("windows_calculator", DEFAULT_WINDOWS_CALCULATOR)
+    # Honor a user's configured tvremix caps so the planner and the live limiter
+    # never disagree (the limiter reads the same config["rate_limits"]).
+    caps = ((config or {}).get("rate_limits") or {}).get("tradingview") or TV_CAPS
 
     res = _resource_estimate(engine, concurrency)
     result: Dict[str, object] = {
@@ -136,7 +144,8 @@ def estimate(
         "platform": plat,
         "council_size": council_size,
         "resources": res,
-        "feed_budget": feed_budget(jobs, iv, plat),
+        "feed_budget": feed_budget(jobs, iv, plat, caps=caps),
+        "tv_caps": caps,
     }
 
     if engine == "api":
@@ -167,9 +176,10 @@ def format_report(e: Dict[str, object]) -> str:
     fb = e.get("feed_budget")
     if fb:
         flag = "✅" if fb["ok"] else "⚠️"
+        caps = e.get("tv_caps") or TV_CAPS
         lines.append(
             f"Feed budget (TV): {fb['per_day']} calls/day {flag}  "
-            f"(caps 1,500/day · 200/hr · 20/min)"
+            f"(caps {caps['per_day']:,}/day · {caps['per_hour']}/hr · {caps['per_minute']}/min)"
         )
         for w in fb["warnings"]:
             lines.append(f"   ⚠️  {w}")

@@ -15,7 +15,7 @@ import csv
 import json
 from typing import Iterable, List, Optional
 
-from ..ballot import MBT_SIGNAL_HEADER, to_mbt_signal
+from ..ballot import MBT_SIGNAL_HEADER, to_mbt_signal, validate_ballot
 
 
 def load_ballots(path: str) -> List[dict]:
@@ -32,6 +32,11 @@ def to_signal_rows(ballots: Iterable[dict], legend: Optional[str] = None) -> Lis
     rows = []
     for b in ballots:
         if legend and b.get("legend", "").lower() != legend.lower():
+            continue
+        # A partial/hand-edited line in ballots.jsonl could be directional yet
+        # missing entry/invalidation/target; validate first so to_mbt_signal's
+        # direct field access can't KeyError and abort the whole run.
+        if validate_ballot(b):
             continue
         sig = to_mbt_signal(b)
         if sig is not None:

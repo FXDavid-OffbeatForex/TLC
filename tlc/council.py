@@ -125,8 +125,12 @@ def write_council(
     threshold: Optional[float] = None,
     description: str = "",
     councils_dir: str = COUNCILS_DIR,
+    overwrite: bool = False,
 ) -> str:
-    """Write a council file. Returns the path. Validates member resolution first."""
+    """Write a council file. Returns the path. Validates member resolution first.
+
+    Refuses to clobber an existing roster unless `overwrite=True`, so a reused
+    name can't silently destroy a user's hand-tuned council."""
     council = {"name": name, "description": description, "members": members,
                "chairman": {}, "weights": {}}
     if threshold is not None:
@@ -135,8 +139,13 @@ def write_council(
     if errors:
         raise ValueError("; ".join(errors))
     os.makedirs(councils_dir, exist_ok=True)
-    import yaml
     path = Path(councils_dir) / f"{name}.yaml"
+    if path.exists() and not overwrite:
+        raise FileExistsError(
+            f"council '{name}' already exists at {path}. "
+            "Pass --force to overwrite, or pick another name."
+        )
+    import yaml
     path.write_text(yaml.safe_dump(council, sort_keys=False), encoding="utf-8")
     return str(path)
 
@@ -147,8 +156,11 @@ def _print_council(council: Dict[str, Any], config: Optional[Dict[str, Any]] = N
     print(f"council: {council['name']}  (threshold {threshold})")
     if council.get("description"):
         print(f"  {council['description']}")
+    core_root = os.path.abspath(LEGENDS_DIR)
     for member, path in resolved:
-        origin = "my_legends" if "my_legends" in path else "core"
+        # Compare resolved roots, not a substring — a repo path that merely
+        # *contains* 'my_legends' must not mislabel a core legend.
+        origin = "core" if os.path.abspath(path).startswith(core_root) else "my_legends"
         w = f"  weight {weights[member]}" if member in weights else ""
         print(f"  • {member:14} [{origin}]{w}")
     for w in warnings:
@@ -192,14 +204,33 @@ def _main(argv: List[str]) -> int:
             print("usage: python3 -m tlc.council new <name> <id> [<id> ...] [--threshold 0.6]", file=sys.stderr)
             return 2
         threshold = None
+        force = False
         ids: List[str] = []
         i = 0
         while i < len(rest):
             if rest[i] == "--threshold":
-                threshold = float(rest[i + 1]); i += 2; continue
+                if i + 1 >= len(rest):
+                    print("error: --threshold needs a value", file=sys.stderr)
+                    return 2
+                try:
+                    threshold = float(rest[i + 1])
+                except ValueError:
+                    print(f"error: --threshold must be a number, got '{rest[i + 1]}'", file=sys.stderr)
+                    return 2
+                i += 2
+                continue
+            if rest[i] == "--force":
+                force = True; i += 1; continue
             ids.append(rest[i]); i += 1
+        if len(ids) < 2:
+            print("usage: python3 -m tlc.council new <name> <id> [<id> ...] [--threshold 0.6] [--force]", file=sys.stderr)
+            return 2
         name, members = ids[0], ids[1:]
-        path = write_council(name, members, threshold=threshold)
+        try:
+            path = write_council(name, members, threshold=threshold, overwrite=force)
+        except (ValueError, FileExistsError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
         print(f"saved → {path}")
         _print_council(load_council(name), config)
         return 0

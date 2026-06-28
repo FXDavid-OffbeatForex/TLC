@@ -9,5 +9,12 @@
       "WebFetch(domain:www.interserver.net)",
       "Bash(python3 -m pytest -q)"
     ]
-  }
+  },
+  "allowedTools": [
+    "Bash",
+    "Read",
+    "Write",
+    "Edit",
+    "mcp__MBT__get_ohlcv"
+  ]
 }

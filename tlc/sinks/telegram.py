@@ -40,6 +40,16 @@ def _esc(s: object) -> str:
     return html.escape(str(s), quote=False)
 
 
+def _as_float(v: object, default: float = 0.0) -> float:
+    """Coerce a verdict field to float; tolerate strings / None from raw JSON
+    (notify reads arbitrary verdict files) so formatting never raises."""
+    try:
+        f = float(v)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return f if f == f else default  # drop NaN
+
+
 def _name(legend_id: str) -> str:
     return _DISPLAY.get(legend_id, str(legend_id).replace("_", " ").title())
 
@@ -74,7 +84,7 @@ def format_verdict(verdict: dict) -> str:
     symbol = _esc(verdict.get("symbol", "?"))
     platform = verdict.get("platform", "")
     plat = f" <i>({_esc(platform)})</i>" if platform else ""
-    consensus = verdict.get("consensus", 0.0) or 0.0
+    consensus = _as_float(verdict.get("consensus"), 0.0)
     for_l = verdict.get("for", []) or []
     against = verdict.get("against", []) or []
     abstain = verdict.get("abstain", []) or []
@@ -105,7 +115,7 @@ def format_verdict(verdict: dict) -> str:
                 rows.append(f"{'R:R':<7}{verdict['rr']}")
             size = verdict.get("size_fraction")
             if size is not None:
-                rows.append(f"{'Size':<7}{float(size):.0%}")
+                rows.append(f"{'Size':<7}{_as_float(size):.0%}")
             lines += ["", "<pre>" + "\n".join(rows) + "</pre>"]
 
     # Roll-call — always shown (who voted yes / no / abstained).

@@ -31,12 +31,14 @@ def aggregate(
     weights = weights or {}
     valid, _invalid = partition(ballots)
 
-    long_w = sum(_weight(b, weights) for b in valid if b["direction"] == "LONG")
-    short_w = sum(_weight(b, weights) for b in valid if b["direction"] == "SHORT")
+    long_ballots = [b for b in valid if b["direction"] == "LONG"]
+    short_ballots = [b for b in valid if b["direction"] == "SHORT"]
+    long_w = sum(_weight(b, weights) for b in long_ballots)
+    short_w = sum(_weight(b, weights) for b in short_ballots)
     directional_w = long_w + short_w
 
-    for_legends = []
-    against_legends = []
+    long_legends = [b["legend"] for b in long_ballots]
+    short_legends = [b["legend"] for b in short_ballots]
     abstain = [b["legend"] for b in valid if not is_directional(b)]
 
     base = {
@@ -49,10 +51,14 @@ def aggregate(
     }
 
     if directional_w == 0 or long_w == short_w:
+        # Split / flat: no winner, but still report who voted which way so the
+        # roll-call reflects every directional voter (not an empty for/against).
         return {
             **base,
             "decision": "NO_TRADE",
             "consensus": 0.0,
+            "for": long_legends,
+            "against": short_legends,
             "rationale": "No directional majority — council split or flat. Standing aside.",
         }
 
@@ -82,6 +88,8 @@ def aggregate(
     stop = round(median([b["invalidation"] for b in winning]), 8)
     target = round(median([b["target"] for b in winning]), 8)
     risk = abs(entry - stop)
+    # risk==0 is unreachable while every winning ballot satisfies invalidation <
+    # entry (median can't collapse them), but guard the division defensively.
     rr = round(abs(target - entry) / risk, 2) if risk > 0 else None
     avg_conv = sum(b["conviction"] for b in winning) / len(winning)
     size_fraction = round(min(1.0, consensus * avg_conv), 2)

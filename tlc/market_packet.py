@@ -11,6 +11,7 @@ in, so this module is fully testable offline.
 from __future__ import annotations
 
 import json
+import math
 import sys
 from typing import Dict, List, Optional
 
@@ -25,10 +26,16 @@ def atr(bars: List[dict], period: int = 14) -> Optional[float]:
     chrono = list(reversed(bars))  # oldest-first for prev-close access
     trs: List[float] = []
     for i in range(1, len(chrono)):
-        h = chrono[i]["high"]
-        low = chrono[i]["low"]
-        prev_close = chrono[i - 1]["close"]
+        h = chrono[i].get("high")
+        low = chrono[i].get("low")
+        prev_close = chrono[i - 1].get("close")
+        # A provider can return a partial bar (missing/None OHLC); skip it rather
+        # than crash the whole packet build on `None - float`.
+        if h is None or low is None or prev_close is None:
+            continue
         trs.append(max(h - low, abs(h - prev_close), abs(low - prev_close)))
+    if not trs:
+        return None
     period = min(period, len(trs))
     return round(sum(trs[-period:]) / period, 8)
 
@@ -49,12 +56,20 @@ def build_packet(
         raise ValueError(f"frames must include non-empty anchor timeframe '{anchor_timeframe}'")
     anchor_bars = frames[anchor_timeframe]
     newest = anchor_bars[0]  # newest-first
+    price = newest.get("close")
+    if price is None or (isinstance(price, float) and not math.isfinite(price)):
+        # A missing/NaN/inf newest close would silently poison every legend's
+        # math and the verdict; fail loud at the seam instead.
+        raise ValueError(
+            f"newest {anchor_timeframe} bar has no usable close ({price!r}); "
+            "the data feed returned an incomplete bar"
+        )
     return {
         "platform": platform,
         "symbol": symbol,
         "anchor_timeframe": anchor_timeframe,
         "as_of": newest["time"],
-        "current_price": newest["close"],
+        "current_price": price,
         "atr": {tf: atr(bars, atr_period) for tf, bars in frames.items()},
         "frames": frames,
     }

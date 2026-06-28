@@ -408,6 +408,12 @@ What a public user needs:
      MCP. No MT5, no MBT, no Wine, no broker — covers stocks, crypto, **and** forex. Ideal for
      non-forex traders and anyone who doesn't want to install MetaTrader.
 
+**Setup is agent-driven — no terminal wizard.** On first session (missing `.env` /
+`config.yaml`), the agent detects the gap and conducts the entire setup in-chat: asks
+which platform(s), clones and registers MBT via `.mcp.json` if needed, writes
+`config.yaml`, creates a blank `.env` scaffold and offers to open it so the user can
+paste their credentials privately in the editor (keys never pass through the chat).
+
 Without any MCP the user can still run the council by pasting OHLCV data manually — the legend specs
 are plain text and the ballot schema is JSON. MCP is the first-class experience.
 
@@ -456,7 +462,10 @@ tests/
   test_providers.py       # platform layer
   test_council.py         # spec lint + council resolution
   test_cron.py            # interval parse, cron expr, rate limiter, telegram payload, vps_calc
-CLAUDE.md                 # natural-language dispatch + platform vocabulary (auto-loaded by Claude Code)
+CLAUDE.md                 # first-run setup + dispatch (auto-loaded by Claude Code)
+AGENTS.md                 # same setup flow for Codex / Cursor / Windsurf / other agents
+.cursorrules              # Cursor alias of AGENTS.md
+.windsurfrules            # Windsurf alias of AGENTS.md
 config.example.yaml
 .env.example              # TVR_API_KEY (TV) + TELEGRAM_BOT_TOKEN/CHAT_ID + OPENROUTER/ANTHROPIC key
 requirements.txt

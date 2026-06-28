@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import os
 import urllib.error
 import urllib.request
@@ -204,9 +205,12 @@ def _num(row: dict, *keys: str) -> Optional[float]:
     for k in keys:
         if k in row and row[k] is not None:
             try:
-                return float(row[k])
+                val = float(row[k])
             except (TypeError, ValueError):
                 return None
+            # float() happily parses "NaN"/"inf"; reject non-finite prices so
+            # they never reach ATR / the packet.
+            return val if math.isfinite(val) else None
     return None
 
 

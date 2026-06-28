@@ -3,6 +3,7 @@ premium minus the earned edge (tuned weights live in a gitignored file)."""
 
 from __future__ import annotations
 
+import copy
 import os
 from typing import Any, Dict
 
@@ -57,9 +58,9 @@ DEFAULTS: Dict[str, Any] = {
         "provider": "openrouter",           # "openrouter" | "anthropic"
     },
     "models": {                             # tier → concrete model id (engine == api)
-        "cheap": "openai/gpt-4o-mini",
-        "mid": "anthropic/claude-3.5-sonnet",
-        "council": "anthropic/claude-3.5-sonnet",
+        "cheap": "anthropic/claude-haiku-4.5",
+        "mid": "anthropic/claude-sonnet-4.6",
+        "council": "anthropic/claude-sonnet-4.6",
     },
     "vps_plans": {                          # monetization links for the calculator
         "interserver_affiliate": "https://www.interserver.net/vps/?id=579551",
@@ -94,7 +95,7 @@ def load_config(path: str = "config.yaml", env_path: str = ".env") -> Dict[str, 
     override just `symbol_suffix` without redeclaring the whole platform block.
     """
     load_dotenv(env_path)
-    cfg = dict(DEFAULTS)
+    cfg = copy.deepcopy(DEFAULTS)   # deep so nested defaults are never shared/mutated
     if os.path.exists(path):
         try:
             import yaml  # optional dependency

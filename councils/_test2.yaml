@@ -1,0 +1,8 @@
+name: _test2
+description: ''
+members:
+- gann
+- wyckoff
+chairman:
+  consensus_threshold: 0.5
+weights: {}

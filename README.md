@@ -444,23 +444,41 @@ python3 -m tlc.scoring.score data/ballots.jsonl signals_wyckoff.csv --legend wyc
 
 ## FAQ
 
-**Does this place real trades?**
+<details>
+<summary><b>Does this place real trades?</b></summary>
+<br>
 No. TLC outputs signals — direction, entry, stop, target — but never connects to a broker account. You decide whether to act on them.
+</details>
 
-**Do I need to pay for an LLM API key?**
-No key from TLC. The council runs on your existing Claude Code (or Cursor/Windsurf) subscription. The TradingView path needs a free `tvr_…` key from [tvremix.xyz](https://tvremix.xyz); the MT5 path needs none.
+<details>
+<summary><b>Do I need to pay for an LLM API key?</b></summary>
+<br>
+No key from TLC. The council runs on your existing Claude Code (or Cursor/Windsurf) subscription. The TradingView path needs a free <code>tvr_…</code> key from <a href="https://tvremix.xyz">tvremix.xyz</a>; the MT5 path needs none.
+</details>
 
-**What is MCP and why does TLC use it?**
-MCP (Model Context Protocol) is Anthropic's open standard for giving AI agents access to external tools. TLC uses two MCP servers: [MBT](https://github.com/FXDavid-OffbeatForex/MBT) for live MT5 broker bars and tvremix for TradingView data. Each legend runs as an isolated Claude MCP subagent — sandboxed from the others until the Chairman aggregates all ballots.
+<details>
+<summary><b>What is MCP and why does TLC use it?</b></summary>
+<br>
+MCP (Model Context Protocol) is Anthropic's open standard for giving AI agents access to external tools. TLC uses two MCP servers: <a href="https://github.com/FXDavid-OffbeatForex/MBT">MBT</a> for live MT5 broker bars and tvremix for TradingView data. Each legend runs as an isolated Claude MCP subagent — sandboxed from the others until the Chairman aggregates all ballots.
+</details>
 
-**Does it work with stocks, crypto, and forex?**
+<details>
+<summary><b>Does it work with stocks, crypto, and forex?</b></summary>
+<br>
 Yes. TradingView covers stocks (NASDAQ, NYSE), crypto (Binance, Coinbase), and forex. MT5 covers broker-native forex and metals. Enable both and TLC auto-routes by asset class.
+</details>
 
-**Can I use my own trading strategy?**
-Yes. `/forge-legend` turns a plain-English description of any strategy into a votable legend — your ICT setup, your sweep-and-reclaim entry, whatever you trade. Custom legends live in `my_legends/` (gitignored) and slot into any council.
+<details>
+<summary><b>Can I use my own trading strategy?</b></summary>
+<br>
+Yes. <code>/forge-legend</code> turns a plain-English description of any strategy into a votable legend — your ICT setup, your sweep-and-reclaim entry, whatever you trade. Custom legends live in <code>my_legends/</code> (gitignored) and slot into any council.
+</details>
 
-**Does TLC work with Cursor / Windsurf / Codex?**
+<details>
+<summary><b>Does TLC work with Cursor / Windsurf / Codex?</b></summary>
+<br>
 Any MCP-compatible coding agent works. The setup flow and slash commands are written for Claude Code, but the underlying Python runs anywhere and any agent that can call MCP tools can drive it.
+</details>
 
 ---
 

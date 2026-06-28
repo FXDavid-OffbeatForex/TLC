@@ -1,7 +1,33 @@
-# TLC — Trading Legends Council
+<div align="center">
 
-> Ten legendary traders and analysts — each rebuilt as an independent AI agent — read the same
-> chart, vote blind, and a **Chairman** issues one risk-managed verdict.
+<!-- HERO IMAGE: generate with the nano-banana prompt, save as docs/hero.png, then uncomment ↓
+<img src="docs/hero.png" alt="Trading Legends Council" width="840">
+-->
+
+<h1>⚖️ TLC — Trading Legends Council</h1>
+
+<p><b>Ten legendary traders, each rebuilt as an independent AI agent.</b><br>
+They read the same chart, vote <i>blind</i>, and a <b>Chairman</b> issues one risk-managed verdict.</p>
+
+<p>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
+  <img alt="Data: TradingView · MT5" src="https://img.shields.io/badge/Data-TradingView%20%C2%B7%20MT5-e8b64c">
+  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-3ddc84">
+  <a href="https://fxdavid-offbeatforex.github.io/TLC/"><img alt="VPS Sizer — live" src="https://img.shields.io/badge/%E2%96%B6_VPS_Sizer-live-5b8cff"></a>
+</p>
+
+<sub>
+  <a href="#usage">Usage</a> ·
+  <a href="#the-council">The council</a> ·
+  <a href="#data-platforms--mt5-or-tradingview">Data platforms</a> ·
+  <a href="#schedule--alerts--247-signals-to-telegram">Schedule</a> ·
+  <a href="#setup--no-api-key-required">Setup</a> ·
+  <a href="#how-it-works">How it works</a>
+</sub>
+
+</div>
+
+---
 
 Ask **one** master for their read, or convene the whole room.
 
@@ -324,6 +350,11 @@ python3 -m tlc.cron stop EURUSD_1h            # remove it
 logged to `data/` → a trade verdict is pushed to Telegram (NO_TRADE stays silent
 by default).
 
+**Many symbols?** Schedules that share an interval **auto-stagger** across the cycle — the
+first fires on the tick, the next at +30m, then +15m, +45m, … — so they never all launch at
+once. That keeps the RAM spike and the TradingView per-minute budget smooth (override per job
+with `--offset <minutes>`; the offset shows as `@+Nm` in `cron list`).
+
 ### Telegram in 2 minutes
 1. Message **[@BotFather](https://t.me/BotFather)** → `/newbot` → copy the **bot token**.
 2. Send your new bot any message, then open
@@ -353,12 +384,13 @@ A scheduled fire is LLM-driven, so it runs through an **engine** (`config.yaml �
 Either way the verdict and alerts are identical — `api` just swaps the brain for your own key.
 
 ### Where to run it 24/7 (and how big)
-The machine must stay on. Size it first — the calculator does the exact feed/cost math and
-recommends a plan.
+The machine must stay on. Size it first — the sizer does the exact feed/cost math and
+recommends the cheapest plan that fits, then links straight to it. Pick your lane:
 
-**▶ [Open the interactive VPS Sizer](https://fxdavid-offbeatforex.github.io/TLC/)** — pick your
-jobs, interval, engine and platform; it shows the cheapest InterServer plan (with price + a
-one-click order link) and flags any feed-budget overrun. No terminal needed.
+| Data | Size it & run it | Why |
+|---|---|---|
+| **TradingView** (api or agent) | **[▶ VPS Sizer](https://fxdavid-offbeatforex.github.io/TLC/)** → cheapest **[InterServer](https://www.interserver.net/vps/?id=579551)** Linux slice (from **$3/mo**, one-click order) | cheap Linux; no MetaTrader |
+| **MT5** | **[▶ Windows VPS Sizer](https://offbeatforex.com/best-forex-vps/)** — MetaTrader must run 24/7 | Windows-only broker terminal |
 
 Prefer the CLI? Same math, headless:
 
@@ -367,14 +399,9 @@ python3 -m tlc.vps_calc --jobs 3 --interval 1h --engine api --platform tv
 # → Feed budget ✅ · ~vCPU/RAM · Recommended: InterServer 1-slice ($3/mo) + link
 ```
 
-| Data | Where | Why |
-|---|---|---|
-| **TradingView** (api or agent) | **[InterServer](https://www.interserver.net/vps/?id=579551)** Linux VPS — from **$3/mo** | cheap Linux; no MetaTrader |
-| **MT5** | **Windows VPS** — [size it here](https://offbeatforex.com/best-forex-vps/) | MetaTrader must run 24/7 |
-
 > **TradingView caveats** (MT5 is exempt): bars are cached 5m–1h by bar size, so don't
 > schedule faster than that, and the free key is capped **20/min · 200/hr · 1,500/day** —
-> TLC enforces the budget for you and the calculator flags a schedule that would exceed it.
+> TLC enforces the budget for you and the sizer flags a schedule that would exceed it.
 
 ---
 

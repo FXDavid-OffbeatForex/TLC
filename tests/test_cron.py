@@ -35,6 +35,45 @@ def test_parse_interval_rejects(bad):
         cron.parse_interval(bad)
 
 
+# ---- cadence guard (lever #3): warn when cron is faster than the timeframe ----
+
+@pytest.mark.parametrize("tf,seconds", [
+    ("15m", 900), ("1h", 3600), ("4h", 14400), ("1d", 86400), ("1w", 604800),
+])
+def test_timeframe_seconds(tf, seconds):
+    assert cron.timeframe_seconds(tf) == seconds
+
+
+@pytest.mark.parametrize("bad", ["", "h", "5x", "abc", "1y"])
+def test_timeframe_seconds_unrecognised(bad):
+    assert cron.timeframe_seconds(bad) is None
+
+
+@pytest.mark.parametrize("every,tf", [
+    ("1h", "4h"),    # hourly cron on a 4h chart — the classic mismatch
+    ("15m", "1h"),
+    ("1h", "1d"),
+])
+def test_cadence_warns_when_faster_than_timeframe(every, tf):
+    msg = cron.cadence_warning(cron.parse_interval(every), tf)
+    assert msg is not None
+    assert tf in msg and f"--every {tf}" in msg  # tells the user how to fix it
+
+
+@pytest.mark.parametrize("every,tf", [
+    ("4h", "4h"),    # matched — no warning
+    ("1d", "4h"),    # slower than the chart — fine
+    ("1h", "1h"),
+])
+def test_cadence_silent_when_cadence_is_sane(every, tf):
+    assert cron.cadence_warning(cron.parse_interval(every), tf) is None
+
+
+def test_cadence_silent_on_unrecognised_timeframe():
+    # Never warn (or crash) on a timeframe we can't parse.
+    assert cron.cadence_warning(cron.parse_interval("1h"), "weird") is None
+
+
 @pytest.mark.parametrize("spec,expr", [
     ("15m", "*/15 * * * *"),
     ("1h", "0 */1 * * *"),

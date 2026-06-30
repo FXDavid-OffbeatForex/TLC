@@ -720,6 +720,66 @@ Surfaced in **two places** from one module: the README (static table + CLI snipp
 - **A4.4** `tlc/vps_calc.py` + `vps_plans` config table (InterServer linear model + affiliate link; Windows deep-link). Tests: budget math + slice selection.
 - **A4.5** `.claude/commands/schedule.md` + CLAUDE.md vocabulary (schedule/alert/engine, per-fire lifecycle, deploy lanes); README: BotFather token steps, engines, two deploy lanes, calculator, rate/cache caveats. `.env.example` updated.
 
+## 2.19 Token economics & cost controls (scheduled mode)
+A scheduled convening is **token-bound**, not call-bound. The structure (§2.4, §1.8):
+
+- Data fetch (§1.2) and the Chairman (§2.5) are **deterministic Python — zero tokens**.
+- The cost is **10 LLM calls per convene** (one blind ballot per legend).
+- The dominant input is the **market packet** (§1.2): `tlc/orchestrator.py` builds it **once** but
+  embeds the *full* OHLCV frames into **all 10** prompts — so the packet is paid for 10× per convene.
+
+**Baseline** (one pair, hourly, 24/7; packet ≈ 22k input tokens + ~1k spec/template per legend,
+~500 output). The packet size is the swing factor — bar count and downsampling move everything.
+
+| | Per convene | Per day (×24) | Per month (×720) |
+|---|---|---|---|
+| LLM calls | 10 | 240 | 7,200 |
+| Input tokens | ~230k | ~5.5M | ~166M |
+| Output tokens | ~5k | ~120k | ~3.6M |
+| Cost — `api` Sonnet 4.6 ($3/$15) | ~$0.77 | ~$18 | ~$555 |
+| Cost — `agent` (subscription) | $0 marginal — but burns rolling/weekly plan quota |||
+
+**The lever menu.** Cumulative; ordered by risk. `api` = per-token dollars, `agent` = plan quota.
+
+| # | Lever | Saves | Tradeoff | Engine |
+|---|---|---|---|---|
+| 1 | **Prompt-cache the packet** (shared prefix at ~0.1× for legends 2–10) | ~80% input | none (verdict-identical) | api (`anthropic`); auto on `agent` |
+| 2 | No reasoning / strict ballot output | small $ / large quota | low | both |
+| 3 | Cadence = anchor timeframe ✅ | up to ~96% fewer convenes | slower intrabar reaction (often correct) | both |
+| 4 | Downsample packet (recent N bars + summary) | ~50–65% input | long-lookback legends may degrade — tune per spec | both |
+| 5 | Per-legend model tiering (`scout_model`/`council_model`) | ~30–40% | cheaper models weaken interpretive methods | api |
+| 6 | Change-detection skip (price unmoved vs ATR) | 30–60% of convenes | may miss a near-threshold break — always run on bar close | both |
+| 7 | Cheap/deterministic pre-filter gate | ~50% of convenes | false negatives are invisible — keep the gate loose | both |
+| 8 | Batch API (50% off, stacks with caching) | flat 50% | async ≤1h window — swing/position only, not intraday | api |
+| 9 | Smaller council / quorum (`--council`) | linear in legends | thinner roster = weaker split detection | both |
+| 10 | ~~Single merged call~~ | ~90% | **breaks blind-independent voting (§2.4) — rejected** | — |
+
+**Stacked target** (Sonnet, one pair hourly): caching → ~$110/mo; + downsample → ~$55; + cadence
+(4h anchor) → ~$14; + batch (swing) → ~$7. On `agent`, dollars are already $0 — optimize **quota** via
+#2, #3, #6, #9 (#1/#8 don't apply: caching is automatic, batch isn't available on `claude -p`).
+
+**Implementation status & open-core line.** Only the **zero-risk, universally-useful** levers ship public:
+**#1 caching** (A4.6) and **#3 cadence guard** (A4.7) — both verdict-identical, both help any self-run user.
+**#2, #4–#9 are deliberately NOT public** — they trade a little analysis quality or a lot of complexity for
+token savings that only matter at **hosted scale** (managed scanning, a signal channel, a leaderboard,
+backtesting). They live in the **premium tier and/or a private fork**, where burning fewer tokens across
+many symbols 24/7 is the cost centre (reserved for the premium tier / a private fork). The menu above stays in the public PRD as the
+*rationale of record*; the implementations do not. The VPS calculator's LLM-cost estimate (§2.17.2) is the
+**pre-caching** figure — a safe upper bound; with #1 enabled the `anthropic` provider bills ~80% less input.
+
+- **A4.6** ✅ Packet prompt caching (`api` engine, `anthropic` provider). `tlc/orchestrator.py` splits the
+  §1.8 prompt into a **shared cacheable prefix** (framing + market packet — byte-identical across the
+  convene) and a **per-legend tail** (identity + method + schema), with `cache_control: ephemeral` on the
+  prefix. Verdict-identical (same tokens, reordered so the shared block leads). OpenRouter path
+  concatenates unchanged (provider cache support varies). Tests: two-block content shape on `anthropic`,
+  single-string parity on `openrouter`.
+- **A4.7** ✅ Cadence guard. `tlc/cron.py` `cadence_warning()` compares the cron interval to the chart
+  timeframe; `cron set` prints a `note:` when firing faster than a new bar prints and **still installs**
+  (warn-and-allow — fast polling is valid for mid-bar alerts). Mirrors the §2.16 TV-cache guard, applied
+  to the timeframe rather than the feed; verdict unaffected (changes *how often* the council convenes,
+  not who votes). `/schedule` defaults the interval to the timeframe. Tests: `timeframe_seconds` parse,
+  warn-when-faster, silent-when-sane, silent-on-unrecognised.
+
 ---
 
 # PART 4 — CROSS-CUTTING
@@ -735,6 +795,13 @@ defaults are neutral (1.0 each), so the repo runs correctly minus the earned edg
 Premium doesn't *unlock* these — it **removes the ops**: our VPS, our LLM keys, our tuned weights,
 the managed scanning, the Discord feed, and the hosted leaderboard. (Affiliate VPS links in the
 calculator are a public monetization seam that's orthogonal to the tier line.)
+
+The same line governs **token cost-optimization** (§2.19). The two safe, verdict-identical levers ship
+public (packet caching, cadence guard). The deeper levers — per-legend packet downsampling, model
+tiering, change-detection skipping, pre-filter gating, batch submission, quorum — are a **hosted-scale**
+concern (they shave token spend across many symbols running 24/7 for managed scanning, a signal channel,
+a leaderboard, or backtesting) and stay **premium / private-fork**. A self-run public
+user doesn't need them; they'd only add complexity and risk to the open path.
 
 User-authored legends are theirs: `my_legends/` is gitignored so a custom strategy never leaks
 into a fork. Councils (small id lists) are shareable; a curated/hosted marketplace + per-community
@@ -766,6 +833,7 @@ Phase A3 (PUBLIC) ✅:  council builder → spec lint + audition → /forge-lege
                        → custom rosters (/convene --council) → example orderflow legend
 Phase A4 (PUBLIC) ⏳:  scheduled mode (/schedule cron) → Telegram alerts → engine agent|api
                        → tvremix rate-limit/cache guards → VPS calculator (InterServer/Windows)
+                       → token cost controls (packet caching + cadence guard shipped; §2.19)
 Phase B  (PREMIUM):    hosted orchestrator → scouts → managed scanning → Historian/weights
                        → Discord feed → VPS/ops → website/leaderboard
                        → (custom-legend marketplace + community leaderboard)

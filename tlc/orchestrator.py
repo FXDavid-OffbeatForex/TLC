@@ -41,11 +41,20 @@ from .sinks import LocalJsonSink
 # Single source of truth for the tier→model map (see config.DEFAULTS["models"]).
 DEFAULT_MODELS = dict(_CONFIG_DEFAULTS["models"])
 
-UNIVERSAL_PROMPT = """You are {display_name}, voting in the Trading Legends Council on {symbol} ({anchor_timeframe}).
-Use ONLY your own method (below). Do not adopt other schools. You vote BLIND.
+# The prompt is split in two so the heavy, identical part can be prompt-cached
+# (§2.19). SHARED_PREFIX is byte-identical across all legends in a convene — the
+# framing + the market packet — so on the `anthropic` provider it is sent as a
+# cached block and legends 2..N read it at ~0.1x. LEGEND_BODY is the per-legend
+# tail (identity, method, schema). Concatenated, the two read as one prompt; the
+# only change vs. the old single template is that the shared block now leads.
+SHARED_PREFIX = """Trading Legends Council — a blind, independent vote on {symbol} ({anchor_timeframe}).
+You are assigned ONE method (given below). Vote using ONLY that method; do not adopt other schools. You vote BLIND.
 
 Market packet:
 {market_packet}
+"""
+
+LEGEND_BODY = """You are {display_name}.
 
 Your method:
 {legend_spec_body}
@@ -70,6 +79,9 @@ Required ballot schema (use these exact field names):
   "target": null
 }}
 """
+
+# Back-compat single-prompt form (shared prefix + per-legend tail).
+UNIVERSAL_PROMPT = SHARED_PREFIX + "\n" + LEGEND_BODY
 
 
 class OrchestratorError(RuntimeError):
@@ -125,11 +137,19 @@ def _model_for(frontmatter: dict, models: dict, default_tier: str = "council") -
 
 # --- LLM transport (OpenRouter / Anthropic, stdlib only) ------------------
 
-def llm_complete(prompt: str, model: str, config: dict, timeout: int = 90) -> str:
+def llm_complete(
+    prompt: str, model: str, config: dict, timeout: int = 90,
+    cache_prefix: Optional[str] = None,
+) -> str:
+    """Complete `prompt`. If `cache_prefix` is given it is the shared, identical
+    lead block (§2.19); the `anthropic` provider sends it as a cached content
+    block so repeated calls in a convene read it cheaply. Other providers just
+    prepend it — the model sees the same single prompt either way."""
     provider = (config.get("orchestrator") or {}).get("provider", "openrouter")
     if provider == "anthropic":
-        return _anthropic(prompt, model, timeout)
-    return _openrouter(prompt, model, timeout)
+        return _anthropic(prompt, model, timeout, cache_prefix)
+    full = f"{cache_prefix}\n{prompt}" if cache_prefix else prompt
+    return _openrouter(full, model, timeout)
 
 
 def _openrouter(prompt: str, model: str, timeout: int) -> str:
@@ -151,14 +171,24 @@ def _openrouter(prompt: str, model: str, timeout: int) -> str:
     return body["choices"][0]["message"]["content"]
 
 
-def _anthropic(prompt: str, model: str, timeout: int) -> str:
+def _anthropic(prompt: str, model: str, timeout: int, cache_prefix: Optional[str] = None) -> str:
     key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not key:
         raise OrchestratorError("ANTHROPIC_API_KEY not set (see .env.example).")
+    # Two content blocks when a shared prefix is supplied: the prefix carries a
+    # cache_control marker so legends 2..N in a convene read it at ~0.1x (§2.19).
+    # A short prefix simply won't cache (no error) — the marker is harmless.
+    if cache_prefix:
+        content = [
+            {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": prompt},
+        ]
+    else:
+        content = prompt
     payload = json.dumps({
         "model": model,
         "max_tokens": 1024,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": content}],
     }).encode("utf-8")
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages",
@@ -210,20 +240,30 @@ def run_council(
     )
     packet_json = json.dumps(packet, ensure_ascii=False)
 
+    # Built once: the heavy block every legend shares verbatim (§2.19). Passed as
+    # cache_prefix so the anthropic provider caches it across the fan-out.
+    shared_prefix = SHARED_PREFIX.format(
+        symbol=packet["symbol"],
+        anchor_timeframe=packet["anchor_timeframe"],
+        market_packet=packet_json,
+    )
+
     def cast(member: Tuple[str, str]) -> Optional[dict]:
         legend_id, path = member
         fm, body = _read_spec(path)
-        prompt = UNIVERSAL_PROMPT.format(
+        legend_body = LEGEND_BODY.format(
             display_name=fm.get("display_name", legend_id),
             legend_id=legend_id,
             symbol=packet["symbol"],
             anchor_timeframe=packet["anchor_timeframe"],
             platform=packet.get("platform", ""),
-            market_packet=packet_json,
             legend_spec_body=body,
         )
         try:
-            reply = llm_complete(prompt, _model_for(fm, models), config)
+            reply = llm_complete(
+                legend_body, _model_for(fm, models), config,
+                cache_prefix=shared_prefix,
+            )
             ballot = extract_ballot_json(reply)
         except OrchestratorError as exc:
             print(f"  {legend_id}: {exc}", file=sys.stderr)

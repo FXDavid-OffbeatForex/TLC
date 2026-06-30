@@ -10,8 +10,8 @@ Each entry is tagged with a TLC marker so we only ever touch our own lines, and 
 registry (`data/schedules.json`) records what's installed.
 
 Pure helpers (parse_interval, to_cron_expr, pick_offset, fires_per_day,
-build_command, registry I/O) are import-safe and unit-tested; only
-`install`/`uninstall` shell out.
+cadence_warning, build_command, registry I/O) are import-safe and unit-tested;
+only `install`/`uninstall` shell out.
 
 CLI:
     python3 -m tlc.cron set EURUSD 1h --every 1h [--platform tv] [--council orderflow]
@@ -65,6 +65,38 @@ def parse_interval(spec: str) -> Interval:
     if n > ceil:
         raise ValueError(f"{n}{unit} is too large for a single cron field (max {ceil}{unit}).")
     return Interval(n, unit)
+
+
+_TF_RE = re.compile(r"^\s*(\d+)\s*([mhdw])\s*$", re.IGNORECASE)
+_TF_UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
+
+
+def timeframe_seconds(timeframe: str) -> "int | None":
+    """A chart timeframe ('15m', '4h', '1d', '1w') as seconds, or None if it
+    doesn't look like a timeframe. Separate from parse_interval: charts also use
+    weeks ('1w') and we never reject on size."""
+    m = _TF_RE.match(str(timeframe))
+    if not m:
+        return None
+    return int(m.group(1)) * _TF_UNIT_SECONDS[m.group(2).lower()]
+
+
+def cadence_warning(interval: Interval, timeframe: str) -> "str | None":
+    """Advisory (lever #3, PRD §2.19) when the cron fires faster than the chart
+    prints a new bar: the extra fires re-vote on the same unclosed bar — same
+    verdict, more cost/quota. Returns None when the cadence is sane or the
+    timeframe is unrecognised. Warn-and-allow: polling fast for mid-bar alerts
+    is a legitimate choice, so this never blocks."""
+    tf_s = timeframe_seconds(timeframe)
+    if tf_s is None or interval.seconds >= tf_s:
+        return None
+    return (
+        f"note: every {interval.label} fires faster than the {timeframe} chart "
+        f"updates — a new {timeframe} bar prints only every {timeframe}, so the "
+        f"extra fires re-vote on the same unclosed bar (same verdict, more "
+        f"cost/quota). Use --every {timeframe} to match, unless you want "
+        f"mid-bar re-checks."
+    )
 
 
 def to_cron_expr(interval: Interval, offset: int = 0) -> str:
@@ -341,6 +373,12 @@ def _cmd_set(args) -> int:
                 file=sys.stderr,
             )
             return 2
+
+    # Lever #3 (PRD §2.19): warn — never block — when the cron fires faster than
+    # the chart timeframe prints a new bar. Override is implicit: it still installs.
+    cadence = cadence_warning(interval, timeframe)
+    if cadence:
+        print(cadence, file=sys.stderr)
 
     engine = args.engine or cfg.get("engine", "agent")
 

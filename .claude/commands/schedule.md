@@ -19,6 +19,11 @@ A scheduled fire is LLM-driven, so it runs through an **engine** (`config.yaml �
    faster than `tv_cache_seconds`** or you re-read stale data. The tvremix budget is
    **20/min · 200/hr · 1,500/day**; the calculator (below) checks it exactly. **MT5 has
    neither** — skip these warnings for the broker feed.
+3. **Cadence vs timeframe (all platforms):** don't schedule faster than the chart's bar
+   prints — a `4h` convene on an hourly cron just re-votes the same unclosed bar (identical
+   verdict, more cost/quota). `cron set` prints a `note:` and still installs (override is
+   fine — fast polling is valid for mid-bar alerts). Default the interval to the timeframe
+   (`--every <tf>`) unless the user explicitly wants intra-bar re-checks.
 
 ## Set — `set <symbol> <tf> --every <interval>`
 1. Parse interval (`15m / 30m / 1h / 2h / 3d`), symbol, tf, platform (`tv`/`mt5`), `--council`.

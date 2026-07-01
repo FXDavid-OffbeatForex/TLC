@@ -4,6 +4,7 @@ display_name: William O'Neil
 tf_scope: multi
 default_anchor: 1h
 regime_strengths: [breakout, momentum, trending_up]
+needs: [swings, vol_avg]
 scout_model: cheap
 council_model: mid
 ---

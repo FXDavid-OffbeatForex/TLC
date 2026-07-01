@@ -4,6 +4,7 @@ display_name: Thomas DeMark
 tf_scope: single
 default_anchor: 1h
 regime_strengths: [range, exhaustion, mean_reversion]
+needs: [td_sequential]
 scout_model: cheap
 council_model: mid
 ---

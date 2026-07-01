@@ -31,6 +31,16 @@ Resolve the native symbol for the platform, then fetch ≈200 bars per frame:
   higher timeframes the method needs and form an `htf_bias`. If `tf_scope:
   single`, fetch the anchor only.
 
+## 3b. Compute deterministic indicators (if the spec declares `needs:`)
+If the legend's frontmatter has a `needs:` list (e.g. `needs: [rsi14, adx14]`),
+do NOT eyeball those readings from the bars — compute them exactly, the same way
+the `api` engine does, so both runtimes give the same ballot (§1.13):
+- Write the market packet to a temp JSON (as in `/convene`), then run
+  `python3 -m tlc.indicators <packet.json> --needs rsi14,adx14 --text`.
+- Read the printed block into your reasoning. **`null` = not enough data /
+  unavailable — treat it as absent, never infer a value.** Base your read of any
+  `needs:` indicator on these exact numbers, not a visual estimate.
+
 ## 4. Analyze in character
 Reason strictly through the legend's lens (their patterns, signals, philosophy,
 era). Be honest: if the legend's setup is NOT present, the correct vote is FLAT.

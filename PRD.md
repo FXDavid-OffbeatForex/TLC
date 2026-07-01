@@ -124,7 +124,9 @@ Built once per convening — every legend sees **identical** data (fairness).
 ```
 Frames via the active provider's `fetch(symbol, tf, count)` (MT5/MBT or TradingView — see §1.10);
 the packet is provider-agnostic. Single-TF legends use only the anchor frame; multi-TF legends
-use the HTF frames.
+use the HTF frames. `atr` is a deterministic pre-computation over these same bars; legends whose
+method is formulaic additionally receive exact indicator readings computed from the packet, injected
+**per-legend** (never into this shared block, to keep voting blind) — see §1.13.
 
 ## 1.3 Ballot (output of every legend) — mapped 1:1 to MBT's signal schema
 MBT's signal columns are `time, symbol, timeframe, direction, entry, sl, tp, regime`.
@@ -216,6 +218,7 @@ display_name: Richard Wyckoff
 tf_scope: multi          # single | multi
 default_anchor: 1h
 regime_strengths: [range_to_breakout, accumulation, distribution]
+needs: [swings, vol_avg]  # optional — deterministic indicator ids to pre-compute (§1.13)
 scout_model: cheap       # OpenRouter tier (premium only — ignored in public)
 council_model: mid
 ---
@@ -234,6 +237,7 @@ Use ONLY your own method (below). Do not adopt other schools. You vote BLIND.
 
 Market packet: {market_packet}
 Your method: {legend_spec_body}
+{indicators_block}   # per-legend, only if the spec declares `needs:` — exact readings; null = unavailable, do not infer (§1.13)
 
 Rules:
 - Output ONE ballot JSON (schema §1.3). Nothing else.
@@ -373,8 +377,83 @@ and the Historian stay intact. `tlc/spec_lint.py` checks (pure Python, testable)
   rule**, conviction drivers, and an Output section pointing at the §1.3 ballot.
 - **Scoreability:** a defined invalidation is mandatory — without it the Chairman can't set
   a stop and MBT/TV can't score the call.
+- **Indicator needs (§1.13):** if `needs:` is present, each id must exist in the indicator
+  registry (else a warning — a typo silently computes nothing).
 
 A spec that lints then faces a **live audition** (§2.11) before admission to a council.
+
+## 1.13 Indicator primitives (deterministic pre-computation)
+**Problem.** Several legends' methods are *formulaic or mechanical* — RSI, ADX/DMI, the
+Ichimoku lines, a TD Sequential count. An LLM asked to derive these by eyeballing 200
+newest-first bars **approximates and often gets them wrong** (recursive smoothing and
+conditional counting are exactly what language models are worst at). Worse, the
+approximation is **non-reproducible**, so the Historian/scoring (§2.6, MBT backtest) can't
+compare like-for-like across runs or engines.
+
+**Principle — compute the deterministic part, leave interpretation to the legend.** A tool
+computes RSI(14) or detects swing pivots; the legend still decides what it *means*, in
+character. Interpretive cores — Elliott wave counts, Wyckoff phase/spring calls, Gann
+squaring, O'Neil base *shapes* — are **never** reduced to a function (that would freeze one
+rigid reading and gut the differentiated reasoning that is the product). They instead
+receive exact **primitives** (pivots, fib levels, volume-vs-average) so their judgment rests
+on real numbers rather than a guess.
+
+**`tlc/indicators.py` — pure functions, same contract as `atr()` (§1.2):** newest-first bars
+in, a reading out, **`None` on insufficient/partial data, never raises.** No MT5/LLM/network
+— fully testable offline against golden series. The whole council is covered by ~4 formulaic
+indicators + ~4 structural primitives (`atr()` already ships):
+
+| Kind | id | Consumed by |
+|---|---|---|
+| formulaic | `rsi14`, `adx14` (+`di`), `sar` | Wilder |
+| formulaic | `ichimoku` (Tenkan/Kijun/Senkou A·B/Chikou) | Hosoda |
+| mechanical | `td_sequential` (Setup-9 / Countdown-13, TDST) | DeMark |
+| primitive | `swings` (fractal pivot highs/lows) | Livermore, Dow, Gann, Wyckoff, Elliott, O'Neil |
+| primitive | `vol_avg` (volume vs rolling average) | Livermore, O'Neil, Dow, Wyckoff, Weinstein |
+| primitive | `ma` (SMA/EMA + slope) | Weinstein (30-MA), general |
+| primitive | `fib` (retracement/extension levels between two pivots) | Gann, Elliott |
+
+**`needs:` — per-legend declaration (§1.7).** Each spec's frontmatter lists the registry ids
+it consumes, **inline form** (`needs: [rsi14, adx14, sar]`; the `_mini_yaml` fallback parses
+only inline lists). Absent = compute nothing (backward-compatible; every current spec is
+unchanged). Custom legends in `my_legends/` may declare `needs:` too.
+
+**Placement — per-legend, NOT in the shared packet.** The values are injected into the
+**per-legend prompt tail** (§1.8 body), computed from that legend's `needs:`. They are
+deliberately *not* attached to the shared market packet (§1.2): the packet is byte-identical
+across the convene and visible to every legend, so putting Wilder's RSI where Gann can read
+it would break **blind, single-method voting** (§1.8, §2.4). The packet stays fair and
+identical; each legend sees only its own school's numbers. (Cost is a handful of tokens per
+legend; the §2.19 packet cache is untouched — the shared prefix does not change.)
+
+**One code path, both runtimes (same-verdict guarantee).** A shared CLI —
+`python3 -m tlc.indicators <packet.json> --needs rsi14,adx14` — is called by **both** the
+`api` orchestrator (§2.14) and the on-demand agent flow (`_single_legend_flow.md`, §2.4).
+Without this, `engine=agent` (eyeballed) and `engine=api` (exact) would produce
+systematically different ballots and scoring couldn't tell them apart. The agent flow already
+writes a `packet.json` temp file (§2.4) — the CLI reads it.
+
+**Error-handling contract** (every failure → `None`, surfaced to the legend as `null`):
+
+| Failure | Handling |
+|---|---|
+| Insufficient bars (RSI≥15, ADX≥~28, Ichimoku Senkou-B≥52, TD setup+13) | return `None` — mirror `atr()` |
+| Partial/None OHLC bar (incomplete forming bar) | skip the bar (as `atr()` does) |
+| Division by zero (RSI zero-loss → 100 by convention; ADX zero range) | explicit convention; never `x/0` |
+| Volume absent/0 (FX = tick volume; some TV feeds omit it) | volume signal → `null`; do **not** fabricate a surge |
+| NaN/inf input | `isfinite`-guard; emit `None`, never propagate |
+| Newest-first ordering | one shared `_chrono()` helper; golden-value tests lock direction |
+
+**`null` means "unavailable — do not infer."** The injected block states this explicitly, so a
+legend treats a missing reading as absent rather than hallucinating a number (which would be
+worse than today's honest eyeballing).
+
+**Validation (§1.12).** `spec_lint` gains a check: each `needs:` entry must exist in the
+registry, else a **warning** — typos (`rsii14`) become visible instead of silently no-op'ing.
+
+**Open-core.** Public. Like packet caching (§2.19 #1) this is zero-risk and
+verdict-*improving* for any self-run user — exactness and reproducibility, not a hosted-scale
+cost lever.
 
 ---
 
@@ -823,6 +902,13 @@ leaderboard is a premium extension of the same files.
 - Risk-overlay sizing formula (conviction → Kelly-fraction; cap needed).
 - Outcome resolution cadence (how long a signal stays OPEN before scoring).
 - When to enable The Floor / Devil's Advocate (cost vs. quality).
+- **Entry typing & validity window.** `entry` (§1.3) is already a *price level* — MBT
+  fills it when price touches it, so a resting/pending entry (breakout stop above, pullback
+  limit below) is scoreable today. But the ballot has no explicit **order type**
+  (market/stop/limit) — it's only implicit in entry-vs-current-price — and no **expiry**
+  ("good for N bars"), so a pending entry can fill arbitrarily far in the future. Start with
+  a **prompt-only** fix (legends set the method's true level and label market/stop/limit in
+  the thesis; no schema change); consider an optional `entry_type` / `valid_until` later.
 
 ## 4.4 Roadmap
 ```
@@ -834,6 +920,9 @@ Phase A3 (PUBLIC) ✅:  council builder → spec lint + audition → /forge-lege
 Phase A4 (PUBLIC) ⏳:  scheduled mode (/schedule cron) → Telegram alerts → engine agent|api
                        → tvremix rate-limit/cache guards → VPS calculator (InterServer/Windows)
                        → token cost controls (packet caching + cadence guard shipped; §2.19)
+Phase A5 (PUBLIC) ⏳:  indicator primitives (§1.13) → tlc/indicators.py (RSI/ADX/SAR, Ichimoku,
+                       TD Sequential, swings/vol_avg/ma/fib) → per-legend `needs:` injection
+                       → shared CLI for both runtimes → spec-lint needs validation
 Phase B  (PREMIUM):    hosted orchestrator → scouts → managed scanning → Historian/weights
                        → Discord feed → VPS/ops → website/leaderboard
                        → (custom-legend marketplace + community leaderboard)

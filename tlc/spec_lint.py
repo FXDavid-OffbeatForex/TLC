@@ -101,6 +101,18 @@ def lint_spec(
     if rs is not None and (not isinstance(rs, list) or not rs):
         errors.append("regime_strengths must be a non-empty list")
 
+    # Optional `needs:` — deterministic indicator ids to pre-compute (§1.13). A
+    # typo would silently compute nothing, so surface it as a warning.
+    needs = fm.get("needs")
+    if needs is not None:
+        if not isinstance(needs, list):
+            errors.append("needs must be an inline list of indicator ids, e.g. needs: [rsi14, adx14]")
+        else:
+            from .indicators import known_ids as _indicator_ids
+            unknown = [n for n in needs if n not in _indicator_ids()]
+            if unknown:
+                warnings.append(f"needs references unknown indicator id(s): {unknown} (see tlc/indicators.py REGISTRY)")
+
     # --- body sections ---
     def has_section(substr: str) -> bool:
         return any(substr in heading for heading in sections)

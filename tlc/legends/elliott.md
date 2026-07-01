@@ -4,6 +4,7 @@ display_name: Ralph Nelson Elliott
 tf_scope: multi
 default_anchor: 1h
 regime_strengths: [trending_up, trending_down, impulsive]
+needs: [swings, fib]
 scout_model: cheap
 council_model: mid
 ---

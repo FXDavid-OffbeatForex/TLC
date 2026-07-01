@@ -4,6 +4,7 @@ display_name: J. Welles Wilder
 tf_scope: single
 default_anchor: 1h
 regime_strengths: [range, momentum_shift, trending_up, trending_down]
+needs: [rsi14, adx14, sar]
 scout_model: cheap
 council_model: mid
 ---

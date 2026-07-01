@@ -4,6 +4,7 @@ display_name: Goichi Hosoda (Ichimoku)
 tf_scope: multi
 default_anchor: 1h
 regime_strengths: [trending_up, trending_down, balance]
+needs: [ichimoku]
 scout_model: cheap
 council_model: mid
 ---

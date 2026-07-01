@@ -4,6 +4,7 @@ display_name: Stan Weinstein
 tf_scope: multi
 default_anchor: 1h
 regime_strengths: [stage_transition, trending_up, trending_down]
+needs: [ma, vol_avg]
 scout_model: cheap
 council_model: mid
 ---

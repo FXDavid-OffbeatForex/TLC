@@ -17,6 +17,10 @@ Accepts plain English too ("convene on AAPL from tradingview"); see `CLAUDE.md`.
   write `{platform, symbol, anchor_timeframe, frames}` to a temp JSON and run
   `python3 -m tlc.market_packet <frames.json> <packet.json>`.
   Every legend MUST receive this identical packet — no legend gets extra data.
+- **Deterministic indicators are per-legend, not shared.** Any legend whose spec
+  declares `needs:` computes its own exact readings in its blind step (see
+  `_single_legend_flow.md` §3b: `python3 -m tlc.indicators <packet.json> --needs …`).
+  Keep them out of the shared packet so no legend sees another school's numbers (§1.13).
 
 ## 2. Determine the council, then collect ballots (BLIND, in parallel)
 Pick the roster:

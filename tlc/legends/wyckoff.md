@@ -4,6 +4,7 @@ display_name: Richard Wyckoff
 tf_scope: multi
 default_anchor: 1h
 regime_strengths: [range_to_breakout, accumulation, distribution]
+needs: [swings, vol_avg]
 scout_model: cheap
 council_model: mid
 ---

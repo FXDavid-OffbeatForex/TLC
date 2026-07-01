@@ -4,6 +4,7 @@ display_name: Jesse Livermore
 tf_scope: single
 default_anchor: 1h
 regime_strengths: [trending_up, trending_down, momentum]
+needs: [swings, vol_avg]
 scout_model: cheap
 council_model: mid
 ---

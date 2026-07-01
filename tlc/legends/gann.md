@@ -4,6 +4,7 @@ display_name: W.D. Gann
 tf_scope: multi
 default_anchor: 1h
 regime_strengths: [turning_points, trending_up, trending_down]
+needs: [swings, fib]
 scout_model: cheap
 council_model: mid
 ---

@@ -35,6 +35,8 @@ from .config import load_config
 from .council import (council_settings, default_council, load_council,
                       resolve_members)
 from .data_desk import build_market_packet
+from .indicators import compute as compute_indicators
+from .indicators import render_block as render_indicator_block
 from .notify import notify_verdict
 from .sinks import LocalJsonSink
 
@@ -58,7 +60,7 @@ LEGEND_BODY = """You are {display_name}.
 
 Your method:
 {legend_spec_body}
-
+{indicators_block}
 Rules:
 - Output ONE ballot JSON using EXACTLY these field names. Nothing else.
 - If your setup is absent, vote FLAT — never force a trade.
@@ -251,6 +253,15 @@ def run_council(
     def cast(member: Tuple[str, str]) -> Optional[dict]:
         legend_id, path = member
         fm, body = _read_spec(path)
+        # Per-legend deterministic indicators (§1.13): computed from this legend's
+        # own `needs:` and injected into its (uncached) tail — never the shared
+        # packet, so a legend never sees another school's numbers (blind voting).
+        needs = fm.get("needs") or []
+        if isinstance(needs, str):
+            needs = [needs]
+        ind_values = compute_indicators(
+            needs, packet.get("frames", {}), packet["anchor_timeframe"]
+        ) if needs else {}
         legend_body = LEGEND_BODY.format(
             display_name=fm.get("display_name", legend_id),
             legend_id=legend_id,
@@ -258,6 +269,7 @@ def run_council(
             anchor_timeframe=packet["anchor_timeframe"],
             platform=packet.get("platform", ""),
             legend_spec_body=body,
+            indicators_block=render_indicator_block(ind_values),
         )
         try:
             reply = llm_complete(

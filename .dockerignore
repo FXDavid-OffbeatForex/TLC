@@ -1,0 +1,11 @@
+.git
+__pycache__
+*.pyc
+.env
+data/
+MBT/
+node_modules/
+docs/
+nano banana/
+*.md
+!requirements.txt

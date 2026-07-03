@@ -77,7 +77,7 @@ def load_dotenv(path: str = ".env") -> None:
     """
     if not os.path.exists(path):
         return
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -101,7 +101,7 @@ def load_config(path: str = "config.yaml", env_path: str = ".env") -> Dict[str, 
             import yaml  # optional dependency
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError("pyyaml required to read config.yaml; `pip install pyyaml`") from exc
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             loaded = yaml.safe_load(fh) or {}
         platforms = loaded.pop("platforms", None)
         cfg.update(loaded)

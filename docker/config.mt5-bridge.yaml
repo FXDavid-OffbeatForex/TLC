@@ -1,0 +1,21 @@
+# Demo config for the Docker MT5-bridge flow (PRD §8b).
+# TLC runs in the `tlc` container; bars come from the `mock-bridge` container over
+# HTTP — no MetaTrader5, no broker, no keys. Proves the container → bridge_url →
+# mt5 provider → market packet path end to end.
+default_anchor_timeframe: 1h
+frames: ["15m", "1h", "4h", "1d"]
+bars_per_frame: 50
+atr_period: 14
+
+enabled_platforms: [mt5]
+default_platform: mt5
+
+platforms:
+  mt5:
+    provider: mt5
+    symbol_suffix: ""
+    bridge_url: http://mock-bridge:8000   # the mock bridge service on the compose network
+    bridge_api_key: ""                     # set to match the bridge's BRIDGE_API_KEY when real
+    asset_classes: [forex, metals, indices]
+
+data_dir: data

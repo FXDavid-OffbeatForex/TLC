@@ -1,0 +1,32 @@
+# TLC Docker — MT5-BRIDGE PATH (advanced / testing). NOT the default lane.
+#
+# Demonstrates TLC-in-Docker fetching MT5 bars over HTTP from a bridge, using a
+# stdlib MOCK bridge (synthetic OHLC) so it runs with zero keys and no broker
+# (PRD §8b). In a real deployment you replace `mock-bridge` with the FastAPI
+# bridge (mt5-bridge/) running on your Windows/MT5 host, and set bridge_url to it.
+#
+# Run:  docker compose -f docker-compose.mt5-bridge.yml up --build
+# Expect: the `tlc` service prints a market-packet summary built via the bridge.
+services:
+  mock-bridge:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./mt5-bridge/mock:/app:ro
+    command: python3 mock_bridge.py
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  tlc:
+    build: .
+    depends_on:
+      mock-bridge:
+        condition: service_healthy
+    volumes:
+      - ./docker/config.mt5-bridge.yaml:/app/config.yaml:ro
+    command: ["python3", "-m", "tlc.data_desk", "EURUSD", "1h", "--platform", "mt5"]

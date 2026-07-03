@@ -1,0 +1,19 @@
+# TLC Docker — TRADINGVIEW DEPLOYMENT (the Linux lane).
+#
+# This is the primary, supported way to run TLC in Docker: data from TradingView,
+# no broker terminal required. MT5 is the Windows lane and is NOT in this image —
+# for the MT5-via-bridge path see docker-compose.mt5-bridge.yml.
+#
+# Setup:  put TVR_API_KEY (and an LLM key for a full convene) in a .env file here.
+# Run:    docker compose up --build
+# Expect: the `tlc` service prints a TradingView market-packet summary, then exits.
+services:
+  tlc:
+    build: .
+    env_file:
+      - .env                 # TVR_API_KEY (required) [+ OPENROUTER_API_KEY for convene]
+    volumes:
+      - ./docker/config.tradingview.yaml:/app/config.yaml:ro
+    # Default CMD (Dockerfile) builds a TradingView packet for BTCUSD. For a full
+    # 10-legend convene, override (needs an LLM key in .env):
+    #   command: ["python3", "-m", "tlc.orchestrator", "BTCUSD", "1h", "--platform", "tv"]

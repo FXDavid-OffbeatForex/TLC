@@ -43,6 +43,11 @@ from .sinks import LocalJsonSink
 # Single source of truth for the tier→model map (see config.DEFAULTS["models"]).
 DEFAULT_MODELS = dict(_CONFIG_DEFAULTS["models"])
 
+# Cap per-call output so OpenRouter's cost pre-check doesn't reserve credit for a
+# model's full max output (e.g. 65536) on every call. 2048 leaves headroom for a
+# model that reasons a bit before emitting the ballot JSON, while staying cheap.
+LEGEND_MAX_TOKENS = 2048
+
 # The prompt is split in two so the heavy, identical part can be prompt-cached
 # (§2.19). SHARED_PREFIX is byte-identical across all legends in a convene — the
 # framing + the market packet — so on the `anthropic` provider it is sent as a
@@ -162,6 +167,7 @@ def _openrouter(prompt: str, model: str, timeout: int) -> str:
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
+        "max_tokens": LEGEND_MAX_TOKENS,
     }).encode("utf-8")
     req = urllib.request.Request(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -189,7 +195,7 @@ def _anthropic(prompt: str, model: str, timeout: int, cache_prefix: Optional[str
         content = prompt
     payload = json.dumps({
         "model": model,
-        "max_tokens": 1024,
+        "max_tokens": LEGEND_MAX_TOKENS,
         "messages": [{"role": "user", "content": content}],
     }).encode("utf-8")
     req = urllib.request.Request(

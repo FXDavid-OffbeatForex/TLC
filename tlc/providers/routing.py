@@ -8,7 +8,9 @@ wins) is:
     3. Config default      — default_platform; else the first enabled platform.
 
 If only one platform is enabled the router collapses to it (a TV-only user
-fetches even forex from TradingView).
+fetches even forex from TradingView) — unless the caller passes an explicit
+platform, which always wins so a deliberate `--platform mt5` still reaches
+that provider's own fail-loud error instead of being silently swapped out.
 """
 
 from __future__ import annotations
@@ -75,15 +77,20 @@ def resolve_platform(
     """Resolve the platform a request should run on (see module docstring)."""
     enabled = config.get("enabled_platforms") or ["mt5"]
 
+    # 1. Explicit override always wins, even over a single-platform collapse
+    # or a platform absent from `enabled_platforms` (which only steers
+    # auto-routing below). If the named platform is genuinely unusable, its
+    # own provider fails loud with a specific, actionable message (e.g.
+    # mt5.py's "MetaTrader5 isn't available in a container" guard) instead
+    # of a generic error here masking it.
+    if explicit:
+        p = PLATFORM_ALIASES.get(str(explicit).strip().lower())
+        if p:
+            return p
+
     # One platform enabled → collapse; nothing to switch to.
     if len(enabled) == 1:
         return enabled[0]
-
-    # 1. Explicit override (only if that platform is actually enabled).
-    if explicit:
-        p = PLATFORM_ALIASES.get(str(explicit).strip().lower())
-        if p and p in enabled:
-            return p
 
     # 2. Auto-route by asset class.
     asset = classify_asset(symbol)

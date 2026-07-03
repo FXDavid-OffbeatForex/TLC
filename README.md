@@ -19,6 +19,7 @@ They read the same chart, vote <i>blind</i>, and a <b>Chairman</b> issues one ri
   <a href="#usage">Usage</a> ·
   <a href="#the-council">The council</a> ·
   <a href="#data-platforms--mt5-or-tradingview">Data platforms</a> ·
+  <a href="#run-in-docker--the-tradingview-lane">Docker</a> ·
   <a href="#schedule--alerts--247-signals-to-telegram">Schedule</a> ·
   <a href="#setup--no-api-key-required">Setup</a> ·
   <a href="#how-it-works">How it works</a> ·
@@ -336,6 +337,33 @@ scored against the same feed they were generated on.
 
 ---
 
+## Run in Docker — the TradingView lane
+
+Docker is the **TradingView deployment** (the Linux lane). TradingView needs no
+broker terminal, so it drops straight into a container:
+
+```bash
+echo "TVR_API_KEY=tvr_your_key" > .env      # + OPENROUTER_API_KEY for a full convene
+docker compose up --build                    # builds a TradingView market packet
+```
+
+**MT5 is the Windows lane and is *not* in the image** — `MetaTrader5` is a
+Windows-only package that needs a running terminal, so it can never live in a Linux
+container. If you run `platform: mt5` in the container you get a clear message, not a
+crash. Two ways to keep MT5:
+
+- **Run TLC natively on your Windows/MT5 host** (MT5 + MBT, as usual), or
+- **Advanced:** run the small **MT5 bridge** (`mt5-bridge/`) on your Windows host and
+  point `platforms.mt5.bridge_url` at it — TLC-in-Docker then fetches bars over HTTP.
+  See [docs/docker.md](docs/docker.md) for the full setup (real bridge + security), and
+  the optional `docker-compose.mt5-bridge.yml` (runs a keyless mock bridge to try the flow).
+
+  > ⚠️ Once the bridge leaves `localhost`, put both hosts on a **private network / VPN**
+  > (e.g. Tailscale) or firewall the port to the TLC box **and** use TLS — the
+  > `bridge_api_key` is sent as a header, so plain HTTP over the internet exposes it.
+
+---
+
 ## Schedule & alerts — 24/7 signals to Telegram
 
 Beyond asking on demand, you can run the council **on a clock** and get a **Telegram**
@@ -489,7 +517,7 @@ pure Python — no MT5 or LLM needed to run the tests:
 
 ```bash
 pip install -r requirements.txt
-python3 -m pytest tests/ -q   # 113 tests, ~0.3s
+python3 -m pytest tests/ -q   # 195 tests, ~0.3s
 ```
 
 ---

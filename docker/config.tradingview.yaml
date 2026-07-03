@@ -1,0 +1,23 @@
+# TradingView deployment config for the Docker image (the Linux lane).
+# TVR_API_KEY is read from the environment (.env), never hard-coded here.
+default_anchor_timeframe: 1h
+frames: ["15m", "1h", "4h", "1d"]
+bars_per_frame: 200
+atr_period: 14
+
+enabled_platforms: [tradingview]
+default_platform: tradingview
+
+platforms:
+  tradingview:
+    provider: tvremix
+    endpoint: https://tvremix.xyz/api/mcp/v1
+    asset_classes: [stocks, crypto, forex]
+
+rate_limits:
+  tradingview:
+    per_minute: 20
+    per_hour: 200
+    per_day: 1500
+
+data_dir: data

@@ -37,9 +37,16 @@ def _cfg(enabled):
 
 def test_single_platform_collapses():
     cfg = _cfg(["tradingview"])
-    # Even forex routes to the only enabled platform.
+    # Even forex routes to the only enabled platform when nothing is explicit.
     assert resolve_platform("EURUSD", cfg) == "tradingview"
-    assert resolve_platform("AAPL", cfg, explicit="mt5") == "tradingview"
+
+
+def test_explicit_wins_even_with_single_platform():
+    cfg = _cfg(["tradingview"])
+    # An explicit request bypasses the collapse — the caller asked for mt5,
+    # so it should reach that provider's own fail-loud error rather than
+    # being silently swapped for tradingview.
+    assert resolve_platform("AAPL", cfg, explicit="mt5") == "mt5"
 
 
 def test_auto_route_by_asset_class():
@@ -58,10 +65,10 @@ def test_explicit_override_wins():
     assert resolve_platform("EURUSD", cfg, explicit="metatrader") == "mt5"
 
 
-def test_explicit_for_disabled_platform_falls_back():
+def test_explicit_for_disabled_platform_still_wins():
     cfg = _cfg(["mt5"])  # tradingview not enabled
-    # asks for tv but only mt5 enabled → collapses to mt5
-    assert resolve_platform("AAPL", cfg, explicit="tv") == "mt5"
+    # asks for tv even though only mt5 is enabled → still honored
+    assert resolve_platform("AAPL", cfg, explicit="tv") == "tradingview"
 
 
 def test_default_when_no_route():

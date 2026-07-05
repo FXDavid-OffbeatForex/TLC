@@ -54,6 +54,21 @@ class Mt5Provider(DataProvider):
         if self.bridge_url:
             return self._fetch_bridge(symbol, timeframe, count)
         # Headless path: defer to MBT core (needs the MetaTrader5 package).
+        # MBT lives at <repo_root>/MBT by convention (CLAUDE.md/AGENTS.md Step B)
+        # but is not pip-installed, so `core` is not importable until that dir is
+        # on sys.path. Add it here so a LOCAL MT5 install (MBT cloned + the
+        # MetaTrader5 package present) works natively — no HTTP bridge required.
+        # This keeps `bridge_url` as the Docker/remote option only, matching how
+        # native TLC is documented. No-op when MBT is absent (Docker/Linux), so
+        # that case still falls through to the loud error below.
+        import os
+        import sys
+        _mbt_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "MBT",
+        )
+        if os.path.isdir(_mbt_dir) and _mbt_dir not in sys.path:
+            sys.path.insert(0, _mbt_dir)
         try:
             from core.ohlcv import fetch_recent  # type: ignore
         except Exception as exc:  # pragma: no cover - depends on MBT + MT5 env

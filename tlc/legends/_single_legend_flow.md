@@ -35,11 +35,25 @@ Resolve the native symbol for the platform, then fetch ≈200 bars per frame:
 If the legend's frontmatter has a `needs:` list (e.g. `needs: [rsi14, adx14]`),
 do NOT eyeball those readings from the bars — compute them exactly, the same way
 the `api` engine does, so both runtimes give the same ballot (§1.13):
-- Write the market packet to a temp JSON (as in `/convene`), then run
-  `python3 -m tlc.indicators <packet.json> --needs rsi14,adx14 --text`.
+- **Compute them with one direct call — do NOT hand-assemble a packet JSON.**
+  `tlc.indicators` needs the exact in-memory packet (`frames`, a dict keyed by
+  timeframe, from `build_market_packet`). A hand-written file with a flat `bars`
+  array is the wrong shape and returns `null` for everything; and
+  `tlc.data_desk … --json` prints only a *summary* (no `frames`), so it can't feed
+  the indicators either. The robust path (same one the `api` engine and the cron
+  helper use) skips the JSON round-trip entirely — build the packet and compute in
+  one command, e.g. for `needs: [swings, fib]`:
+  ```bash
+  python3 -c "from tlc.data_desk import build_market_packet; from tlc.indicators import compute, render_block; from tlc.normalize import canonical_symbol as S, canonical_timeframe as T; p=build_market_packet(S('EURUSD'), T('1h'), explicit_platform='mt5'); print(render_block(compute(['swings','fib'], p['frames'], T('1h'))))"
+  ```
+  (swap in the symbol, anchor timeframe, `explicit_platform`, and the spec's
+  `needs:` list).
 - Read the printed block into your reasoning. **`null` = not enough data /
-  unavailable — treat it as absent, never infer a value.** Base your read of any
-  `needs:` indicator on these exact numbers, not a visual estimate.
+  unavailable — treat it as absent, never infer a value.** But if *every* declared
+  `needs:` indicator is `null`, suspect a bad packet (wrong schema / empty bars) or
+  a failed fetch — **not** a real data gap: re-run the one-liner above and retry
+  before concluding the indicators are unavailable. Base your read of any `needs:`
+  indicator on these exact numbers, not a visual estimate.
 
 ## 4. Analyze in character
 Reason strictly through the legend's lens (their patterns, signals, philosophy,

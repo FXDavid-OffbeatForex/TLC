@@ -99,7 +99,9 @@ action they take is restarting their agent when told.
     `~/.wine/drive_c/.../Python/*/python.exe`); if you can't locate it, ask the
     user once for that path.
 
-  Full shape: `{"mcpServers": {"mbt": {"command": "...", "args": ["..."]}}}`
+  Full shape: `{"mcpServers": {"MBT": {"command": "...", "args": ["..."]}}}`
+  (the key MUST be uppercase `MBT` — tool names derive from it, and the
+  permission entries everywhere else expect `mcp__MBT__get_ohlcv`)
 - **iv. Set the MT5 terminal path** (`mt5_path` in `MBT/config.yaml`). Offer
   two ways — you do the writing either way:
   - **A — they paste it:** "Right-click your MT5 shortcut → Properties →
@@ -111,7 +113,7 @@ action they take is restarting their agent when told.
   `EURUSD` shows as `EURUSDzero`). If yes, set
   `platforms.mt5.symbol_suffix` in TLC's `config.yaml` (e.g. `zero`) and
   align `default_symbol` in `MBT/config.yaml`.
-- **vi. Restart.** Tell the user to **restart their agent** so the new `mbt`
+- **vi. Restart.** Tell the user to **restart their agent** so the new `MBT`
   MCP server loads (approve it if prompted) — the only step they perform, no
   terminal needed. After restart, confirm by fetching a few bars with
   `mcp__MBT__get_ohlcv`.
@@ -265,10 +267,12 @@ Or use `python3 -m tlc.orchestrator` for a fully headless run.
 ### Step 6 — Save & alert
 
 ```bash
-# Save ballots + verdict
-python3 -c "from tlc.sinks import LocalJsonSink; ..."
+# Preferred: aggregate + save + alert in one step (alert is a no-op when
+# alerts.enabled is empty; NO_TRADE respects quiet_no_trade)
+python3 -m tlc.run_council ballots.json --alert
 
-# Send Telegram alert (if configured)
+# Or piecewise:
+python3 -c "from tlc.sinks import LocalJsonSink; ..."
 python3 -m tlc.notify data/verdicts/latest.json
 ```
 

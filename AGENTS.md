@@ -117,7 +117,9 @@ action they take is restarting their agent when told.
     `~/.wine/drive_c/.../Python/*/python.exe`); if you can't locate it, ask the
     user once for that path.
 
-  Full shape: `{"mcpServers": {"mbt": {"command": "...", "args": ["..."]}}}`
+  Full shape: `{"mcpServers": {"MBT": {"command": "...", "args": ["..."]}}}`
+  (the key MUST be uppercase `MBT` — tool names derive from it, and the
+  permission entries everywhere else expect `mcp__MBT__get_ohlcv`)
 - **iv. Set the MT5 terminal path** (`mt5_path` in `MBT/config.yaml`). Offer
   two ways — you do the writing either way:
   - **A — they paste it:** "Right-click your MT5 shortcut → Properties →
@@ -129,7 +131,7 @@ action they take is restarting their agent when told.
   `EURUSD` shows as `EURUSDzero`). If yes, set
   `platforms.mt5.symbol_suffix` in TLC's `config.yaml` (e.g. `zero`) and
   align `default_symbol` in `MBT/config.yaml`.
-- **vi. Restart.** Tell the user to **restart their agent** so the new `mbt`
+- **vi. Restart.** Tell the user to **restart their agent** so the new `MBT`
   MCP server loads (approve it if prompted) — the only step they perform, no
   terminal needed. After restart, confirm by fetching a few bars with
   `mcp__MBT__get_ohlcv`.
@@ -202,6 +204,7 @@ think of EURUSD?**"
 | "what councils do I have?" / "show me the orderflow council" | `python3 -m tlc.council list` / `show <name>` |
 | "scan EURUSD every hour and alert me" | Set up a cron — `python3 -m tlc.cron set EURUSD 1h --every 1h` |
 | "what's scheduled?" / "stop the EURUSD schedule" | `python3 -m tlc.cron list` / `stop <name>` |
+| "what's my open trade on EURUSD?" / "why didn't my schedule alert?" | Open-trade gate — `python3 -m tlc.trade_gate status <name>` (name from `cron list`); `clear <name>` to force it to resume |
 | "what VPS do I need?" | `python3 -m tlc.vps_calc --jobs 1 --interval 1h --engine api --platform tv` |
 | "score my ballots" / "how is Gann doing?" | `python3 -m tlc.scoring.score data/ballots.jsonl signals.csv` |
 
@@ -283,12 +286,83 @@ Or use `python3 -m tlc.orchestrator` for a fully headless run.
 ### Step 6 — Save & alert
 
 ```bash
-# Save ballots + verdict
-python3 -c "from tlc.sinks import LocalJsonSink; ..."
+# Preferred: aggregate + save + alert in one step (alert is a no-op when
+# alerts.enabled is empty; NO_TRADE respects quiet_no_trade)
+python3 -m tlc.run_council ballots.json --alert
 
-# Send Telegram alert (if configured)
+# Or piecewise:
+python3 -c "from tlc.sinks import LocalJsonSink; ..."
 python3 -m tlc.notify data/verdicts/latest.json
 ```
+
+---
+
+## Running TLC under Hermes Agent
+
+TLC also runs natively under **Hermes Agent** (Nous Research's open agent
+harness) — this file (`AGENTS.md`) is harness-neutral and Hermes reads it the
+same way Claude Code / Codex / Cursor do. Everything above works unchanged;
+this section covers the two things that differ. (There's also a small
+Hermes Skills Hub bundle at `hermes/skills/` — `convene`, `ask-a-legend`,
+`forge-legend` — for users who'd rather install a skill than clone the repo
+directly; each one self-bootstraps a full TLC checkout on first run.)
+
+### Data: MCP servers or the headless fallback
+
+The same two MCP servers (`MBT` for MT5, `tvremix` for TradingView) work under
+Hermes — register them in **Hermes' own MCP config** (same server
+command/args shown in Step B above; only the file location differs from
+Claude Code's `.mcp.json` — consult Hermes' docs for where it keeps MCP
+server definitions). If you'd rather not register an MCP server at all, skip
+it and use the headless fetcher already documented in Step 3 above:
+```bash
+python3 -m tlc.data_desk BTCUSD 1h --platform tv
+```
+(needs `TVR_API_KEY` in `.env`). This works identically regardless of harness.
+
+### Scheduled engine (`engine: agent`)
+
+If you install a cron job with `engine: agent` (see §Running the council,
+Step 6, and `tlc.cron`), the default `agent_cmd` is `"claude -p"` — Hermes
+users should point it at Hermes' own headless invocation instead:
+```yaml
+engine: agent
+agent_cmd: "hermes -p"
+```
+in `config.yaml`. **Simpler: use `engine: api`** instead (runs
+`python3 -m tlc.orchestrator` directly on your own OpenRouter/Anthropic key)
+— it sidesteps this harness-specific detail entirely and is the recommended
+default for Hermes users.
+
+### Scheduling & delivery via Hermes' native cron (instead of `tlc.cron`)
+
+Hermes has its own cron + multi-channel delivery (Discord, WhatsApp, Slack,
+Telegram, …). For Hermes users this **replaces** `tlc.cron` + `tlc.notify`:
+TLC runs the council, Hermes schedules it and delivers the verdict. Set up a
+Hermes cron task with a plain-English prompt, e.g.:
+> Every hour, convene EURUSD and send the verdict to Discord. Stay silent if
+> the verdict is NO_TRADE.
+
+Notes:
+- **Delivered payload is the agent's final chat message** — the ballot table
+  + Chairman's verdict from §Running the council Steps 4/6 — not
+  `tlc.notify`'s JSON struct. Nothing extra to configure.
+- **NO_TRADE noise:** TLC's own `quiet_no_trade` config (§Key files,
+  `config.yaml`) only applies to `tlc.notify`'s Telegram sink — it does
+  **not** apply here. Say "stay silent on NO_TRADE" (or similar) directly in
+  the cron task's prompt, as above.
+- **The sequential open-trade gate: ask for it in the prompt.** `tlc.cron set`
+  installs the gate as a shell wrapper around its own generated command
+  (`tlc/trade_gate.py`, see §Scheduling in the public PRD); a Hermes cron task
+  runs a raw prompt instead, so that wrapper never runs. Instead, the
+  `convene`/`ask-a-legend` skills implement the same gate in-skill (their §0c:
+  `trade_gate check` before any work, `record` after the verdict — same state
+  files, fully enforced): trigger it by asking, e.g. *"every hour convene
+  EURUSD 1h **with the open-trade gate** and send to Discord."* Without such
+  wording a Hermes schedule is ungated and re-alerts on every fire even while
+  an earlier trade is still open.
+- **Don't double-schedule.** Use Hermes cron *or* `tlc.cron`, never both for
+  the same symbol/timeframe — you'll get duplicate verdicts and alerts.
 
 ---
 

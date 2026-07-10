@@ -17,7 +17,7 @@ class LocalJsonSink:
 
     def _append(self, name: str, record: dict) -> None:
         path = os.path.join(self.data_dir, name)
-        with open(path, "a") as fh:
+        with open(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def emit_ballot(self, ballot: dict) -> None:

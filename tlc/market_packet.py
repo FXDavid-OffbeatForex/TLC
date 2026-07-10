@@ -83,7 +83,7 @@ def _main(argv: List[str]) -> int:
     if not argv:
         print("usage: python -m tlc.market_packet <input.json> [output.json]", file=sys.stderr)
         return 2
-    with open(argv[0]) as fh:
+    with open(argv[0], encoding="utf-8") as fh:
         spec = json.load(fh)
     packet = build_packet(
         spec["symbol"],
@@ -94,7 +94,7 @@ def _main(argv: List[str]) -> int:
     )
     out = json.dumps(packet, indent=2)
     if len(argv) > 1:
-        with open(argv[1], "w") as fh:
+        with open(argv[1], "w", encoding="utf-8") as fh:
             fh.write(out)
     else:
         print(out)

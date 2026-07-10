@@ -198,10 +198,13 @@ class TelegramSink:
     def emit_outcome(self, outcome: dict) -> None:
         self.send(format_outcome(outcome))
 
-    def emit_verdict(self, verdict: dict) -> None:
+    def emit_verdict(self, verdict: dict) -> bool:
+        """True if a message was sent, False if quiet_no_trade suppressed it —
+        so notify's "alerted:" summary only names sinks that actually fired."""
         if self.quiet_no_trade and verdict.get("decision") == "NO_TRADE":
-            return None
+            return False
         self.send(format_verdict(verdict))
+        return True
 
     # --- transport --------------------------------------------------------
     def send(self, text: str) -> dict:

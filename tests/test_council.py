@@ -1,5 +1,7 @@
 """Tests for the Council Builder: spec lint + council resolution (PRD §1.11–1.12)."""
 
+import os
+
 import pytest
 
 from tlc.spec_lint import lint_spec, parse_spec
@@ -106,8 +108,9 @@ def test_core_legend_ids():
 
 
 def test_find_legend_core_and_custom():
-    assert find_legend("gann").endswith("tlc/legends/gann.md")
-    assert find_legend("ict_ob").endswith("my_legends/ict_ob.md")
+    # normalize separators so the assert holds on Windows paths too
+    assert find_legend("gann").replace(os.sep, "/").endswith("tlc/legends/gann.md")
+    assert find_legend("ict_ob").replace(os.sep, "/").endswith("my_legends/ict_ob.md")
     assert find_legend("does_not_exist") is None
 
 

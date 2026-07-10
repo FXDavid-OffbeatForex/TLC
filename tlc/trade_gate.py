@@ -84,7 +84,7 @@ def load_state(data_dir: str, name: str) -> dict:
     path = _state_path(data_dir, name)
     if os.path.exists(path):
         try:
-            with open(path) as fh:
+            with open(path, encoding="utf-8") as fh:
                 return json.load(fh)
         except (json.JSONDecodeError, OSError):
             print(f"[trade_gate] {name}: unreadable state file, starting fresh",
@@ -96,7 +96,7 @@ def load_state(data_dir: str, name: str) -> dict:
 def save_state(data_dir: str, name: str, state: dict) -> None:
     path = _state_path(data_dir, name)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         json.dump(state, fh, indent=2)
 
 
@@ -311,7 +311,10 @@ def _read_verdict_lines(data_dir: str) -> List[str]:
     path = os.path.join(data_dir, "verdicts.jsonl")
     if not os.path.exists(path):
         return []
-    with open(path, encoding="utf-8") as fh:
+    # errors="replace": a line written before the sink forced UTF-8 (or by any
+    # foreign tool in the platform codepage) must degrade to one unparseable
+    # line, not a UnicodeDecodeError that breaks record's never-raises contract.
+    with open(path, encoding="utf-8", errors="replace") as fh:
         return fh.readlines()
 
 
@@ -506,7 +509,7 @@ def cmd_status(args) -> int:
               f"  opened {trade.get('opened_at')} ({age})")
     fails = int(state.get("consecutive_check_failures", 0))
     if fails:
-        print(f"  ⚠ {fails} consecutive inconclusive checks")
+        print(f"  warning: {fails} consecutive inconclusive checks")
     print(f"  verdicts checkpoint: {state.get('verdicts_checkpoint', 0)}")
     return 0
 

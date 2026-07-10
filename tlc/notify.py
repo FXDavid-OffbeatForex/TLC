@@ -40,8 +40,10 @@ def notify_verdict(verdict: dict, config: dict) -> List[str]:
     for sink in build_alert_sinks(config):
         name = getattr(sink, "name", sink.__class__.__name__)
         try:
-            sink.emit_verdict(verdict)
-            fired.append(name)
+            # A sink may return False to say it deliberately suppressed the
+            # message (e.g. quiet_no_trade); don't report it as having fired.
+            if sink.emit_verdict(verdict) is not False:
+                fired.append(name)
         except Exception as exc:  # noqa: BLE001 — one bad channel must not abort
             # A missing token, a network error, or a malformed verdict that trips
             # formatting should degrade gracefully, not kill the scheduled fire.
@@ -71,7 +73,7 @@ def _main() -> int:
     args = ap.parse_args()
 
     cfg = load_config(args.config)
-    with open(args.verdict) as fh:
+    with open(args.verdict, encoding="utf-8") as fh:
         verdict = json.load(fh)
 
     enabled = (cfg.get("alerts") or {}).get("enabled") or []

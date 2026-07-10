@@ -295,7 +295,7 @@ def _configure_headless_settings(platform: str = "") -> None:
 
     with open(settings_path, "w") as fh:
         json.dump(existing, fh, indent=2)
-    print("  → .claude/settings.json updated (headless allowedTools)")
+    print("  -> .claude/settings.json updated (headless allowedTools)")
 
 
 # --- crontab management (Unix) -------------------------------------------
@@ -384,7 +384,7 @@ def _cmd_set(args) -> int:
         if interval.seconds < cache:
             print(
                 f"error: every {interval.label} is faster than tv_cache_seconds "
-                f"({cache}s) for a TradingView feed — bars are cached, so it would "
+                f"({cache}s) for a TradingView feed - bars are cached, so it would "
                 "re-read stale data. Use a longer interval or --platform mt5.",
                 file=sys.stderr,
             )
@@ -409,7 +409,7 @@ def _cmd_set(args) -> int:
             abs_bin = shutil.which(binary)
             if not abs_bin:
                 print(
-                    f"error: '{binary}' not found on PATH — is Claude Code installed?\n"
+                    f"error: '{binary}' not found on PATH - is Claude Code installed?\n"
                     f"  Run 'which {binary}' to verify, or set agent_cmd in config.yaml\n"
                     f"  to the absolute path (e.g. /home/user/.local/bin/claude -p).",
                     file=sys.stderr,
@@ -452,7 +452,7 @@ def _cmd_set(args) -> int:
     }
 
     if is_windows():
-        print("Windows — run this once in an elevated terminal to register the task:\n")
+        print("Windows - run this once in an elevated terminal to register the task:\n")
         print("  " + schtasks_command(name, interval, command, offset))
     else:
         install(name, cron_expr, command)
@@ -460,12 +460,12 @@ def _cmd_set(args) -> int:
         if engine == "agent":
             _configure_headless_settings(args.platform or resolved_platform)
     upsert_registry(entry, data_dir)
-    print(f"  → {command}")
+    print(f"  -> {command}")
     siblings = sum(1 for e in others if e.get("interval") == interval.label)
     if offset and siblings:
-        print(f"  → staggered +{offset}m past the tick "
+        print(f"  -> staggered +{offset}m past the tick "
               f"(spread across {siblings + 1} jobs on the {interval.label} cycle)")
-    print(f"\nFires {fires_per_day(interval):.0f}×/day. Tip: `python3 -m tlc.vps_calc` to size a VPS.")
+    print(f"\nFires {fires_per_day(interval):.0f}x/day. Tip: `python3 -m tlc.vps_calc` to size a VPS.")
     return 0
 
 
@@ -484,7 +484,7 @@ def _cmd_list(args) -> int:
             f"@+{e['offset']}m" if e.get("offset") else "",
             "no-gate" if e.get("gate") is False else "",
         ]))
-        print(f"• {e['name']:<16} {e['symbol']} {e['timeframe']} every {e['interval']}  {extra}")
+        print(f"* {e['name']:<16} {e['symbol']} {e['timeframe']} every {e['interval']}  {extra}")
     return 0
 
 
@@ -493,7 +493,7 @@ def _cmd_stop(args) -> int:
     cfg = load_config(args.config)
     data_dir = cfg.get("data_dir", "data")
     if is_windows():
-        print(f'Windows — run: schtasks /delete /tn "TLC_{args.name}" /f')
+        print(f'Windows - run: schtasks /delete /tn "TLC_{args.name}" /f')
     else:
         removed = uninstall(args.name)
         print(f"removed cron: {args.name}" if removed else f"no crontab entry named {args.name}")

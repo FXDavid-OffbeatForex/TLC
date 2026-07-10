@@ -96,7 +96,9 @@ only thing they do is restart Claude Code at the end.
     `~/.wine/drive_c/.../Python/*/python.exe`); if you can't locate it, ask the
     user once for that path.
 
-    Shape: `{"mcpServers": {"mbt": {"command": "...", "args": ["..."]}}}`
+    Shape: `{"mcpServers": {"MBT": {"command": "...", "args": ["..."]}}}`
+    (the key MUST be uppercase `MBT` — tool names derive from it, and the
+    permission entries everywhere else expect `mcp__MBT__get_ohlcv`)
 - **iv. Set the MT5 terminal path** (`mt5_path` in `MBT/config.yaml`). Offer two
   ways — you do the writing either way:
   - **A — they paste it:** "Right-click your MT5 shortcut → Properties → Target"
@@ -107,7 +109,7 @@ only thing they do is restart Claude Code at the end.
 - **v. Broker symbol suffix.** Ask if their broker appends one (e.g. `EURUSD` shows
   as `EURUSDzero`). If yes, set `platforms.mt5.symbol_suffix` in TLC's `config.yaml`
   (e.g. `zero`) and align `default_symbol` in `MBT/config.yaml`.
-- **vi. Restart.** Tell the user to **restart Claude Code** so the new `mbt` server
+- **vi. Restart.** Tell the user to **restart Claude Code** so the new `MBT` server
   loads (approve it if prompted) — the only step they perform, no terminal. After
   restart, confirm by fetching a few bars with `mcp__MBT__get_ohlcv`.
 
@@ -170,6 +172,7 @@ Finally: "Ready! Try: **convene BTCUSD** or **what does Wyckoff think of EURUSD?
 | "what councils do I have?" / "show me the orderflow council" | `python3 -m tlc.council list` / `show <name>` |
 | "scan EURUSD every hour and alert me" · "run the council on BTC every 15m" · `/schedule …` | Set up a cron → `.claude/commands/schedule.md` |
 | "what's scheduled?" / "stop the EURUSD schedule" | `python3 -m tlc.cron list` / `stop <name>` |
+| "what's my open trade on EURUSD?" / "did my scheduled trade close?" / "why didn't my schedule alert?" | Open-trade gate → `python3 -m tlc.trade_gate status <name>` (name from `cron list`, e.g. `EURUSD_1h`); force it to resume with `clear <name>` |
 | "what VPS do I need?" / "size a server for 3 hourly jobs" | VPS calculator → `python3 -m tlc.vps_calc --jobs 3 --interval 1h --engine <agent\|api> --platform <tv\|mt5>`. For a non-technical user, offer the interactive web sizer instead: <https://fxdavid-offbeatforex.github.io/TLC/> |
 | "score my ballots" / "how is Gann doing?" | Local scoring → `tlc/scoring/score.py` (+ MBT backtest) |
 
@@ -255,9 +258,14 @@ The user can run the council on a clock and get **Telegram** alerts — see
 - **Alerts:** Telegram needs `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` in `.env` and
   `alerts.enabled: [telegram]`. NO_TRADE is silent unless `quiet_no_trade: false`.
   `python3 -m tlc.notify <verdict.json>` sends a verdict to enabled channels.
+  On-demand convenes alert too: `convene.md` §3 runs `tlc.run_council … --alert`
+  (a no-op while no channel is enabled), so a strong signal reaches Telegram
+  whether it came from a schedule or a direct ask.
 
-**Per fire:** wake engine → fresh packet → council blind → Chairman → log to `data/`
-→ push a trade verdict to Telegram.
+**Per fire:** open-trade gate check (skip the fire while the schedule's last alerted
+trade is still open; alert WIN/LOSS when it resolves — `tlc/trade_gate.py`) → wake
+engine → fresh packet → council blind → Chairman → log to `data/` → push a trade
+verdict to Telegram (it becomes the new tracked open trade).
 
 **Always-on / VPS.** 24/7 schedules need a machine that stays up. Before installing a
 schedule, run the calculator and show the recommendation + link:

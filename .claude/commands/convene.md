@@ -41,8 +41,18 @@ Run them as parallel subagents where possible so the reads stay isolated.
 - Save all ballots to the local sink (`data/ballots.jsonl`).
 - Run the Chairman to produce the verdict. Use the council's threshold/weights for a
   custom roster (`tlc.council.council_settings`); default threshold is `0.65`. Write the
-  ballots to a JSON array and run `python3 -m tlc.run_council <ballots.json>`, or call
-  `tlc.chairman.aggregate(ballots, threshold=…, weights=…)` directly.
+  ballots to a JSON array and run `python3 -m tlc.run_council <ballots.json> --alert` —
+  preferred, because it also persists the verdict. If you call
+  `tlc.chairman.aggregate(ballots, threshold=…, weights=…)` directly instead, you MUST
+  still write the verdict through `LocalJsonSink.emit_verdict` — scheduled fires rely on
+  `data/verdicts.jsonl` (the open-trade gate reads it to track the alerted trade), so a
+  verdict that is only printed is invisible to the scheduler — and then push the alert
+  yourself: write the verdict to a JSON file and run `python3 -m tlc.notify <verdict.json>`.
+- **Alerting is part of every convene, on-demand included** (PRD §2.15: same path
+  however the verdict was produced). `--alert` / `tlc.notify` is a no-op when no
+  channel is configured (`alerts.enabled` empty) and respects `quiet_no_trade` for
+  NO_TRADE verdicts, so run it unconditionally — but only ONCE per convene: if the
+  request also says "send to telegram", the `--alert` send already satisfies it.
 
 ## 4. Present
 Show a table of the 10 ballots (legend · direction · conviction · entry · stop ·

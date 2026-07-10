@@ -709,12 +709,19 @@ only ever touch our own lines. A registry (`data/schedules.json`) tracks what's 
 | `3d`  | `0 0 */3 * *`  | ~10 / month |
 
 **What happens on each fire (e.g. an hourly `EURUSD 1h`):**
-1. Cron wakes the engine headless.
-2. Resolve platform → build a fresh market packet (15m/1h/4h/1d).
-3. Run the council blind → ballots → Chairman → verdict.
-4. Log ballots + verdict to `data/` (same as on-demand).
-5. **Trade verdict** (LONG/SHORT) → push to Telegram. **NO_TRADE** → silent by default
-   (`quiet_no_trade: true`), toggleable.
+1. **Open-trade gate** (`tlc/trade_gate.py`, default on): if this schedule's last alerted
+   trade is still open — bars fetched since the alert never touched its SL or TP — the fire
+   is **skipped entirely** (no LLM call, no alert): one open position per schedule, the same
+   sequential rule MBT's realistic backtest mode enforces (and lever #7, §2.19). If the trade
+   resolved, a **WIN/LOSS outcome alert** is pushed first (§2.15) and the fire proceeds.
+   Unresolvable states fail closed; a trade still open after `max_open_bars` expires with a
+   notice so the schedule never wedges. Opt out per schedule with `--no-gate`.
+2. Cron wakes the engine headless.
+3. Resolve platform → build a fresh market packet (15m/1h/4h/1d).
+4. Run the council blind → ballots → Chairman → verdict.
+5. Log ballots + verdict to `data/` (same as on-demand).
+6. **Trade verdict** (LONG/SHORT) → push to Telegram, and the gate records it as the new
+   open trade. **NO_TRADE** → silent by default (`quiet_no_trade: true`), toggleable.
 
 `/schedule` subcommands (and natural language — "scan EURUSD every hour and alert me"):
 `set <symbol> <tf> <interval> [--council N] [--platform tv|mt5]` · `list` · `stop <name>`.
@@ -748,7 +755,15 @@ identical sinks — the same seam pattern as platforms (§1.10).
 - **Routing:** `tlc/notify.py` formats the verdict (decision, consensus %, entry/stop/target, R:R,
   for/against legends, platform) and sends to every channel in `alerts.enabled`. CLI:
   `python3 -m tlc.notify <verdict.json>` — so the on-demand flow and both engines reach alerts the same way.
-- **Noise control:** `quiet_no_trade` (default on) suppresses NO_TRADE pings.
+  The on-demand agent flow gets there via `python3 -m tlc.run_council <ballots.json> --alert`
+  (`convene.md` §3 passes it unconditionally — a no-op while `alerts.enabled` is empty); the api
+  engine via `tlc.orchestrator --alert`.
+- **Noise control:** `quiet_no_trade` (default on) suppresses NO_TRADE pings. A suppressed
+  send is not reported as fired (`notify_verdict` only names sinks that actually sent).
+- **Outcome alerts (scheduled mode):** when the open-trade gate (§2.13) sees a tracked trade
+  resolve, `TelegramSink.emit_outcome` pushes a **✅ WIN +xR / ❌ LOSS −1R** message (entry →
+  exit, bars held) via `tlc/notify.py::notify_outcome` — so a schedule reports the close of
+  the trade it alerted, not just new entries. Outcomes also append to `data/outcomes.jsonl`.
 - **Why Telegram public, Discord premium:** Telegram = *your private* alerts; Discord = the
   *community / leaderboard* feed (the premium brand surface). A generic-webhook seam (ntfy/Slack/custom)
   is an easy later add.
@@ -828,7 +843,7 @@ A scheduled convening is **token-bound**, not call-bound. The structure (§2.4, 
 | 4 | Downsample packet (recent N bars + summary) | ~50–65% input | long-lookback legends may degrade — tune per spec | both |
 | 5 | Per-legend model tiering (`scout_model`/`council_model`) | ~30–40% | cheaper models weaken interpretive methods | api |
 | 6 | Change-detection skip (price unmoved vs ATR) | 30–60% of convenes | may miss a near-threshold break — always run on bar close | both |
-| 7 | Cheap/deterministic pre-filter gate | ~50% of convenes | false negatives are invisible — keep the gate loose | both |
+| 7 | Cheap/deterministic pre-filter gate ✅ (open-trade gate, §2.13) | skips every fire while the last alerted trade is open | none while a position is live (a sequential trader wouldn't re-enter anyway); fails closed on data gaps | both |
 | 8 | Batch API (50% off, stacks with caching) | flat 50% | async ≤1h window — swing/position only, not intraday | api |
 | 9 | Smaller council / quorum (`--council`) | linear in legends | thinner roster = weaker split detection | both |
 | 10 | ~~Single merged call~~ | ~90% | **breaks blind-independent voting (§2.4) — rejected** | — |
@@ -838,8 +853,9 @@ A scheduled convening is **token-bound**, not call-bound. The structure (§2.4, 
 #2, #3, #6, #9 (#1/#8 don't apply: caching is automatic, batch isn't available on `claude -p`).
 
 **Implementation status & open-core line.** Only the **zero-risk, universally-useful** levers ship public:
-**#1 caching** (A4.6) and **#3 cadence guard** (A4.7) — both verdict-identical, both help any self-run user.
-**#2, #4–#9 are deliberately NOT public** — they trade a little analysis quality or a lot of complexity for
+**#1 caching** (A4.6), **#3 cadence guard** (A4.7), and **#7 the open-trade gate** (§2.13 —
+deterministic, mirrors the sequential backtest rule, and *more* faithful to how the signals are
+scored, not less). **#2, #4–#6, #8–#9 are deliberately NOT public** — they trade a little analysis quality or a lot of complexity for
 token savings that only matter at **hosted scale** (managed scanning, a signal channel, a leaderboard,
 backtesting). They live in the **premium tier and/or a private fork**, where burning fewer tokens across
 many symbols 24/7 is the cost centre (reserved for the premium tier / a private fork). The menu above stays in the public PRD as the

@@ -35,6 +35,11 @@ A scheduled fire is LLM-driven, so it runs through an **engine** (`config.yaml �
      button (no terminal needed).
 3. Install the cron (idempotent per name; crontab on Linux/macOS, schtasks on Windows):
    `python3 -m tlc.cron set <symbol> <tf> --every <iv> [--platform tv|mt5] [--council N] [--engine api]`
+   - **Sequential open-trade gate (default ON):** the installed command is wrapped in
+     `python3 -m tlc.trade_gate run …` — while the schedule's last alerted trade hasn't hit
+     its SL/TP yet, fires are skipped entirely (no LLM call, no alert), exactly like MBT's
+     sequential backtest. Opt a schedule out with `--no-gate`; kill it globally with
+     `open_trade_gate.enabled: false` in `config.yaml`.
    - **Auto-staggered:** jobs sharing an interval are spread across the cycle (1st at the
      tick, then +30m, +15m, +45m, …) so they don't all fire at once — this smooths the RAM
      spike and the tvremix per-minute peak. Override with `--offset <minutes>` if needed.
@@ -50,7 +55,19 @@ plus `@+Nm` stagger offset when non-zero).
 prints the `schtasks /delete` line to run.
 
 ## What happens on each fire
-Cron wakes the engine → fresh market packet → council votes blind → Chairman verdict →
-logged to `data/` → **trade verdict pushed to Telegram** (NO_TRADE stays silent unless
-`quiet_no_trade: false`). For 24/7 the machine must stay on: **TV → InterServer Linux VPS**,
-**MT5 → Windows VPS** (MetaTrader must run).
+**Gate check first** (`tlc/trade_gate.py`, gated schedules only): if the schedule's last
+alerted trade is still open (bars since the alert never touched SL or TP), the fire is
+**skipped** — no LLM call, no alert. If the trade resolved, a **WIN/LOSS outcome alert**
+goes to Telegram first. Then (or when nothing is tracked): cron wakes the engine → fresh
+market packet → council votes blind → Chairman verdict → logged to `data/` → **trade
+verdict pushed to Telegram** (NO_TRADE stays silent unless `quiet_no_trade: false`) → a
+LONG/SHORT verdict becomes the new tracked open trade. A trade unresolved after
+`max_open_bars` (default 1000) expires with a notice so the schedule never wedges. For
+24/7 the machine must stay on: **TV → InterServer Linux VPS**, **MT5 → Windows VPS**
+(MetaTrader must run).
+
+## Gate — `status <name>` / `clear <name>`
+- "what's my open trade on EURUSD?" → `python3 -m tlc.trade_gate status EURUSD_1h`
+  (direction, entry/SL/TP, age in bars, any stuck-check warnings).
+- Force the schedule to resume alerting (drop the tracked trade + any stuck lock):
+  `python3 -m tlc.trade_gate clear EURUSD_1h`.

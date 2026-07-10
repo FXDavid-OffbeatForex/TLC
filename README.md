@@ -374,11 +374,17 @@ scan EURUSD every hour and alert me          # plain English
 /schedule set EURUSD 1h --every 1h           # or the command
 python3 -m tlc.cron list                      # what's scheduled
 python3 -m tlc.cron stop EURUSD_1h            # remove it
+python3 -m tlc.trade_gate status EURUSD_1h    # what's the open trade, if any
 ```
 
-**On each fire:** build a fresh packet → council votes blind → Chairman verdict →
-logged to `data/` → a trade verdict is pushed to Telegram (NO_TRADE stays silent
-by default).
+**One open trade per schedule.** A schedule won't re-alert while the trade it last
+alerted is still open — it skips the fire (no LLM call at all) until price hits that
+trade's stop or target, then pushes a WIN/LOSS outcome and resumes normally. This is
+the same sequential rule the backtester scores by. Opt out with `--no-gate`.
+
+**On each fire:** open-trade gate check → (if clear) build a fresh packet → council
+votes blind → Chairman verdict → logged to `data/` → a trade verdict is pushed to
+Telegram (NO_TRADE stays silent by default) and tracked as the new open trade.
 
 **Many symbols?** Schedules that share an interval **auto-stagger** across the cycle — the
 first fires on the tick, the next at +30m, then +15m, +45m, … — so they never all launch at

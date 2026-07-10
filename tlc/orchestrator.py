@@ -307,6 +307,7 @@ def run_council(
     verdict = aggregate(
         valid, weights=weights, threshold=threshold,
         as_of=packet.get("as_of", ""),
+        timeframe=packet["anchor_timeframe"],
     )
     verdict.setdefault("platform", packet.get("platform", ""))
 

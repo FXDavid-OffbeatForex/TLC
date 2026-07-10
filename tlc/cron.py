@@ -177,9 +177,17 @@ def build_command(
     agent_cmd: str = "claude -p",
     data_dir: str = "data",
     python: str = "python3",
+    gate: bool = True,
 ) -> str:
     """The shell command a cron fire runs. engine=agent invokes the user's agent
     CLI; engine=api invokes the pure-Python orchestrator on the user's own key.
+
+    `gate=True` (default) wraps the engine command in the sequential open-trade
+    gate (`tlc/trade_gate.py`): the fire is skipped while the schedule's last
+    alerted trade is still open. The wrapper only PREFIXES the engine command —
+    its construction is untouched — and the result stays a flat token string
+    valid in both /bin/sh and cmd.exe. `gate=False` reproduces the ungated
+    command byte-for-byte (clean opt-out / rollback).
 
     Every interpolated field is shell-quoted: this string is persisted to the
     crontab and executed by /bin/sh, so an unescaped symbol like `EURUSD"; rm -rf ~`
@@ -202,6 +210,14 @@ def build_command(
             f"and send the verdict to telegram"
         )
         inner = f"{agent_cmd} {shlex.quote(prompt)}"
+
+    if gate:
+        name = make_name(symbol, timeframe)
+        plat_flag = f" --platform {platform}" if platform in ("tv", "mt5") else ""
+        inner = (
+            f"{python} -m tlc.trade_gate run {shlex.quote(name)} "
+            f"{shlex.quote(symbol)} {shlex.quote(timeframe)}{plat_flag} -- {inner}"
+        )
 
     return f"cd {shlex.quote(repo_dir)} && {inner} >> {shlex.quote(log)} 2>&1"
 
@@ -416,10 +432,15 @@ def _cmd_set(args) -> int:
         used = [e.get("offset", 0) for e in others if e.get("interval") == interval.label]
         offset = pick_offset(used, window)
 
+    # Sequential open-trade gate (PRD §2.13): on by default; --no-gate opts a
+    # single schedule out, open_trade_gate.enabled: false kills it globally.
+    gate = (not args.no_gate) and bool(
+        (cfg.get("open_trade_gate") or {}).get("enabled", True))
+
     command = build_command(
         symbol, timeframe, interval,
         engine=engine, platform=args.platform or "", council=args.council or "",
-        agent_cmd=agent_cmd, data_dir=data_dir,
+        agent_cmd=agent_cmd, data_dir=data_dir, gate=gate,
     )
     cron_expr = to_cron_expr(interval, offset)
     entry = {
@@ -427,6 +448,7 @@ def _cmd_set(args) -> int:
         "interval": interval.label, "engine": engine,
         "platform": args.platform or "", "council": args.council or "",
         "offset": offset, "cron_expr": cron_expr, "command": command,
+        "gate": gate,
     }
 
     if is_windows():
@@ -460,6 +482,7 @@ def _cmd_list(args) -> int:
             f"council={e['council']}" if e.get("council") else "",
             f"engine={e.get('engine','agent')}",
             f"@+{e['offset']}m" if e.get("offset") else "",
+            "no-gate" if e.get("gate") is False else "",
         ]))
         print(f"• {e['name']:<16} {e['symbol']} {e['timeframe']} every {e['interval']}  {extra}")
     return 0
@@ -493,6 +516,9 @@ def _main() -> int:
     s.add_argument("--offset", type=int, default=None,
                    help="minute offset past the tick (default: auto-stagger to "
                         "avoid colliding with same-interval jobs)")
+    s.add_argument("--no-gate", action="store_true",
+                   help="alert on every fire, even while the last alerted trade "
+                        "is still open (disables the sequential open-trade gate)")
     s.set_defaults(func=_cmd_set)
 
     sub.add_parser("list", help="list schedules").set_defaults(func=_cmd_list)

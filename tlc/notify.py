@@ -49,6 +49,21 @@ def notify_verdict(verdict: dict, config: dict) -> List[str]:
     return fired
 
 
+def notify_outcome(outcome: dict, config: dict) -> List[str]:
+    """Send a resolved-trade outcome (WIN/LOSS/EXPIRED, from the open-trade gate)
+    to every enabled alert channel. Same degrade-and-continue contract as
+    notify_verdict: a failing channel is reported, never fatal."""
+    fired: List[str] = []
+    for sink in build_alert_sinks(config):
+        name = getattr(sink, "name", sink.__class__.__name__)
+        try:
+            sink.emit_outcome(outcome)
+            fired.append(name)
+        except Exception as exc:  # noqa: BLE001 — one bad channel must not abort
+            print(f"  outcome alert via {name} failed: {exc}", file=sys.stderr)
+    return fired
+
+
 def _main() -> int:
     ap = argparse.ArgumentParser(description="Send a verdict to enabled alert channels.")
     ap.add_argument("verdict", help="path to a verdict JSON file")

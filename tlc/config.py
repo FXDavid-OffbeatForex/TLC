@@ -49,6 +49,17 @@ DEFAULTS: Dict[str, Any] = {
         "enabled": [],                      # e.g. ["telegram"] — secrets live in .env
         "telegram": {"quiet_no_trade": True},
     },
+    # Sequential open-trade gate for SCHEDULED fires only (PRD §2.13/§2.19): one
+    # open position per schedule, like MBT's sequential backtest. While the last
+    # alerted trade hasn't hit its SL/TP, cron fires are skipped (no LLM call, no
+    # alert). On-demand /convene is never gated.
+    "open_trade_gate": {
+        "enabled": True,                    # runtime kill switch for all schedules
+        "ambiguous_bar": "loss",            # SL and TP inside one bar → count as loss
+        "stale_lock_seconds": 1800,         # reclaim a fire's lock after this
+        "max_open_bars": 1000,              # unresolved after N bars → expire, resume
+        "warn_after_failures": 3,           # N inconclusive checks in a row → alert
+    },
     # tvremix budget guard (tvremix-only; MT5 has no caps). Set to {} to disable.
     "rate_limits": {
         "tradingview": {"per_minute": 20, "per_hour": 200, "per_day": 1500},

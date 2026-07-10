@@ -43,6 +43,7 @@ def _main() -> int:
         weights=cfg.get("weights", {}),
         threshold=cfg.get("consensus_threshold", 0.65),
         as_of=(valid[0].get("created_at", "") if valid else ""),
+        timeframe=(valid[0].get("timeframe", "") if valid else ""),
     )
 
     if not args.no_save:

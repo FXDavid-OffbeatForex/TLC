@@ -134,6 +134,47 @@ def format_verdict(verdict: dict) -> str:
     return "\n".join(lines)
 
 
+def format_outcome(outcome: dict) -> str:
+    """Render a resolved scheduled trade (from the open-trade gate) for Telegram."""
+    result = str(outcome.get("outcome", "?")).upper()
+    symbol = _esc(outcome.get("symbol", "?"))
+    platform = outcome.get("platform", "")
+    plat = f" <i>({_esc(platform)})</i>" if platform else ""
+    r = _as_float(outcome.get("r"), 0.0)
+
+    if result == "WIN":
+        head = f"✅ <b>WIN {r:+.2f}R</b>"
+    elif result == "LOSS":
+        head = f"❌ <b>LOSS {r:+.2f}R</b>"
+    else:  # EXPIRED (or anything unexpected): neutral, no R claim
+        head = f"⏳ <b>{_esc(result)}</b>"
+
+    tf = outcome.get("timeframe", "")
+    lines = [
+        f"{head} · <b>{symbol}</b>{plat}",
+        _RULE,
+        f"{_esc(outcome.get('direction', '?'))}" + (f" · {_esc(tf)}" if tf else ""),
+    ]
+    rows = [
+        f"{'Entry':<7}{_fmt_px(outcome.get('entry'))}",
+        f"{'Stop':<7}{_fmt_px(outcome.get('sl'))}",
+        f"{'Target':<7}{_fmt_px(outcome.get('tp'))}",
+    ]
+    lines += ["", "<pre>" + "\n".join(rows) + "</pre>"]
+
+    opened = outcome.get("opened_at", "")
+    resolved = outcome.get("resolved_at", "")
+    if opened or resolved:
+        lines += ["", f"🕐 {_esc(opened)} → {_esc(resolved) if resolved else 'still open'}"]
+    bars = outcome.get("bars_held")
+    if bars:
+        lines.append(f"⏱ {int(bars)} bars held")
+    if result == "EXPIRED":
+        lines += ["", "<i>Still open after the max tracked bars — tracking stopped; "
+                      "the schedule resumes normal fires.</i>"]
+    return "\n".join(lines)
+
+
 class TelegramSink:
     """Emit verdicts (and optionally ballots/outcomes) to Telegram."""
 
@@ -149,13 +190,13 @@ class TelegramSink:
         self.quiet_no_trade = quiet_no_trade
         self.timeout = timeout
 
-    # The alert sink only acts on verdicts; ballots/outcomes are no-ops so it can
-    # slot into the same fan-out loop as LocalJsonSink without erroring.
+    # The alert sink doesn't act on ballots; the no-op lets it slot into the same
+    # fan-out loop as LocalJsonSink without erroring.
     def emit_ballot(self, ballot: dict) -> None:  # pragma: no cover - intentional no-op
         return None
 
-    def emit_outcome(self, outcome: dict) -> None:  # pragma: no cover - intentional no-op
-        return None
+    def emit_outcome(self, outcome: dict) -> None:
+        self.send(format_outcome(outcome))
 
     def emit_verdict(self, verdict: dict) -> None:
         if self.quiet_no_trade and verdict.get("decision") == "NO_TRADE":

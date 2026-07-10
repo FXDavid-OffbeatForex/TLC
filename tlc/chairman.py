@@ -26,6 +26,7 @@ def aggregate(
     threshold: float = 0.65,
     regime: str = "",
     as_of: str = "",
+    timeframe: str = "",
 ) -> dict:
     """Aggregate validated ballots into a verdict. Invalid ballots are dropped."""
     weights = weights or {}
@@ -43,6 +44,9 @@ def aggregate(
 
     base = {
         "symbol": (valid[0]["symbol"] if valid else ""),
+        # Anchor timeframe of the convene. Without it, two schedules on the same
+        # symbol (EURUSD_1h and EURUSD_4h) are indistinguishable in verdicts.jsonl.
+        "timeframe": timeframe,
         "regime": regime,
         "for": [],
         "against": [],

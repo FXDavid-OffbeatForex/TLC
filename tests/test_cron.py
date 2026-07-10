@@ -178,6 +178,28 @@ def test_build_command_api_with_council():
     assert "--alert" in cmd
 
 
+def test_build_command_gated_wraps_inner():
+    # The gate wrapper only PREFIXES the engine command; the engine invocation
+    # itself is untouched and runs inside the wrapper (after `--`).
+    cmd = cron.build_command("EURUSD", "1h", cron.parse_interval("1h"),
+                             engine="api", platform="mt5", repo_dir="/repo")
+    assert "python3 -m tlc.trade_gate run EURUSD_1h EURUSD 1h --platform mt5 --" in cmd
+    assert "python3 -m tlc.orchestrator EURUSD 1h" in cmd
+    assert cmd.index("tlc.trade_gate run") < cmd.index("tlc.orchestrator")
+
+
+def test_build_command_gate_false_is_byte_identical_to_ungated():
+    kw = dict(engine="api", platform="tv", council="orderflow", repo_dir="/repo")
+    on = cron.build_command("BTCUSD", "15m", cron.parse_interval("15m"), gate=True, **kw)
+    off = cron.build_command("BTCUSD", "15m", cron.parse_interval("15m"), gate=False, **kw)
+    assert "trade_gate" not in off
+    # Removing exactly the wrapper prefix from the gated command yields the
+    # ungated one byte-for-byte — clean opt-out/rollback.
+    wrapper = "python3 -m tlc.trade_gate run BTCUSD_15m BTCUSD 15m --platform tv -- "
+    assert wrapper in on
+    assert on.replace(wrapper, "") == off
+
+
 def test_make_name():
     assert cron.make_name("EUR/USD", "1h") == "EUR_USD_1h"
     assert cron.make_name("NASDAQ:AAPL", "1D") == "NASDAQ_AAPL_1D"

@@ -151,6 +151,17 @@ def test_abstain_listed():
     assert "gann" in v["abstain"]
 
 
+def test_verdict_carries_timeframe():
+    # The open-trade gate matches verdicts to schedules by symbol + timeframe;
+    # aggregate must stamp the anchor timeframe (default "" keeps old callers).
+    ballots = [_long_ballot(f"L{i}", 0.8) for i in range(7)]
+    assert aggregate(ballots, threshold=0.65, timeframe="1h")["timeframe"] == "1h"
+    assert aggregate(ballots, threshold=0.65)["timeframe"] == ""
+    # NO_TRADE verdicts carry it too (it lives in the shared base dict).
+    split = [_long_ballot("L1"), _short_ballot("S1")]
+    assert aggregate(split, threshold=0.65, timeframe="4h")["timeframe"] == "4h"
+
+
 def test_weights_swing_outcome():
     # 2 short vs 3 long by count, but short legends weighted 3x → short wins
     ballots = [_long_ballot(f"L{i}", 0.8) for i in range(3)] + \

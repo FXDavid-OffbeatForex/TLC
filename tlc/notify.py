@@ -28,7 +28,12 @@ def build_alert_sinks(config: dict) -> List[object]:
     for name in enabled:
         if name == "telegram":
             tg = alerts.get("telegram") or {}
-            sinks.append(TelegramSink(quiet_no_trade=tg.get("quiet_no_trade", True)))
+            sinks.append(TelegramSink(
+                quiet_no_trade=tg.get("quiet_no_trade", True),
+                show_pnl=tg.get("show_pnl", False),
+                data_dir=config.get("data_dir", "data"),
+                pnl_cfg=config.get("pnl") or {},
+            ))
         # generic webhook / ntfy / discord are easy future additions here.
     return sinks
 

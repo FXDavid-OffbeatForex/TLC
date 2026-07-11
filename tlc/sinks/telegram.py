@@ -20,6 +20,8 @@ import urllib.error
 import urllib.request
 from typing import List, Optional
 
+from .. import pnl
+
 API_BASE = "https://api.telegram.org"
 _RULE = "──────────────────"
 
@@ -78,8 +80,38 @@ def _fmt_px(v: object) -> str:
     return f"{f:.6f}".rstrip("0").rstrip(".") or "0"
 
 
-def format_verdict(verdict: dict) -> str:
-    """Render a verdict as a rich Telegram (HTML) message with a full roll-call."""
+def format_pnl_footer(stats: Optional[dict]) -> Optional[str]:
+    """A compact running-PnL footer (HTML) from tlc.pnl.compute()'s stats, or
+    None when there's nothing to show (no closed trades yet)."""
+    if not stats or not stats.get("closed"):
+        return None
+    pf = stats.get("profit_factor")
+    pf_str = "∞" if pf is None else f"{pf:.2f}"
+    since = stats.get("since")
+    head = "📈 <b>Track record</b>" + (f" · since {_esc(since)}" if since else "")
+
+    wl = f"{stats['wins']}W / {stats['losses']}L"
+    if stats.get("expired"):
+        wl += f" · {stats['expired']}exp"
+    lines = [
+        _RULE,
+        head,
+        f"{stats['decisive']} closed · {wl} · <b>{stats['win_rate']:.0%}</b> win",
+        f"Net <b>{stats['net_r']:+.1f}R</b> · PF {pf_str} · "
+        f"Exp {stats['expectancy_r']:+.2f}R · maxDD {stats['max_dd_r']:.1f}R",
+    ]
+    cur = stats.get("currency")
+    if cur:
+        lines.append(
+            f"≈ <b>{cur['net']:+,.0f} {_esc(cur['code'])}</b> "
+            f"({_fmt_px(cur['risk_cash'])}/trade risk)"
+        )
+    return "\n".join(lines)
+
+
+def format_verdict(verdict: dict, footer: Optional[str] = None) -> str:
+    """Render a verdict as a rich Telegram (HTML) message with a full roll-call.
+    `footer` (e.g. a running-PnL block) is appended verbatim when given."""
     decision = verdict.get("decision", "?")
     symbol = _esc(verdict.get("symbol", "?"))
     platform = verdict.get("platform", "")
@@ -131,11 +163,14 @@ def format_verdict(verdict: dict) -> str:
         lines += ["", f"<i>{_esc(verdict['rationale'])}</i>"]
     if verdict.get("created_at"):
         lines += ["", f"🕐 {_esc(verdict['created_at'])}"]
+    if footer:
+        lines += ["", footer]
     return "\n".join(lines)
 
 
-def format_outcome(outcome: dict) -> str:
-    """Render a resolved scheduled trade (from the open-trade gate) for Telegram."""
+def format_outcome(outcome: dict, footer: Optional[str] = None) -> str:
+    """Render a resolved scheduled trade (from the open-trade gate) for Telegram.
+    `footer` (e.g. a running-PnL block) is appended verbatim when given."""
     result = str(outcome.get("outcome", "?")).upper()
     symbol = _esc(outcome.get("symbol", "?"))
     platform = outcome.get("platform", "")
@@ -172,6 +207,8 @@ def format_outcome(outcome: dict) -> str:
     if result == "EXPIRED":
         lines += ["", "<i>Still open after the max tracked bars — tracking stopped; "
                       "the schedule resumes normal fires.</i>"]
+    if footer:
+        lines += ["", footer]
     return "\n".join(lines)
 
 
@@ -184,11 +221,32 @@ class TelegramSink:
         chat_id: Optional[str] = None,
         quiet_no_trade: bool = True,
         timeout: int = 15,
+        show_pnl: bool = False,
+        data_dir: str = "data",
+        pnl_cfg: Optional[dict] = None,
     ):
         self.token = token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
         self.chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
         self.quiet_no_trade = quiet_no_trade
         self.timeout = timeout
+        self.show_pnl = show_pnl
+        self.data_dir = data_dir
+        self.pnl_cfg = pnl_cfg or {}
+
+    def _pnl_footer(self, rec: dict) -> Optional[str]:
+        """Running-PnL footer for the schedule that produced `rec` (a verdict or
+        an outcome — both carry symbol/timeframe/platform). Best-effort: any
+        failure returns None so a stats footer never breaks the actual alert."""
+        if not self.show_pnl:
+            return None
+        try:
+            stats = pnl.running_stats(
+                self.data_dir, rec.get("symbol", ""), rec.get("timeframe", ""),
+                rec.get("platform", ""), self.pnl_cfg,
+            )
+            return format_pnl_footer(stats)
+        except Exception:  # noqa: BLE001 — a footer must never abort alerting
+            return None
 
     # The alert sink doesn't act on ballots; the no-op lets it slot into the same
     # fan-out loop as LocalJsonSink without erroring.
@@ -196,14 +254,14 @@ class TelegramSink:
         return None
 
     def emit_outcome(self, outcome: dict) -> None:
-        self.send(format_outcome(outcome))
+        self.send(format_outcome(outcome, footer=self._pnl_footer(outcome)))
 
     def emit_verdict(self, verdict: dict) -> bool:
         """True if a message was sent, False if quiet_no_trade suppressed it —
         so notify's "alerted:" summary only names sinks that actually fired."""
         if self.quiet_no_trade and verdict.get("decision") == "NO_TRADE":
             return False
-        self.send(format_verdict(verdict))
+        self.send(format_verdict(verdict, footer=self._pnl_footer(verdict)))
         return True
 
     # --- transport --------------------------------------------------------

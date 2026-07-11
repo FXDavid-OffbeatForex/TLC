@@ -58,6 +58,17 @@ alerts:
   enabled: []                     # [telegram] to push scheduled verdicts (token in .env)
   telegram:
     quiet_no_trade: true          # stay silent on NO_TRADE (only ping on real signals)
+    show_pnl: true                # append a running PnL footer (since the schedule started)
+
+# ── Running PnL footer (tlc/pnl.py) ──────────────────────────────────────────
+# Stats are aggregated from data/outcomes.jsonl (each resolved trade carries an
+# R-multiple). R is always shown. Set account_balance to also show a currency
+# estimate: per-trade cash at risk = account_balance * risk_per_trade_pct/100
+# (fixed-fractional, an estimate, non-compounding).
+pnl:
+  account_balance: null           # e.g. 10000 to enable the $ estimate (null = R only)
+  risk_per_trade_pct: 1.0         # % of balance risked per trade (= 1R)
+  currency: USD
 
 # tvremix budget guard — tvremix only; MT5 has no rate limit or cache. {} disables.
 rate_limits:

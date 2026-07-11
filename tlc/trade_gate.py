@@ -100,6 +100,16 @@ def save_state(data_dir: str, name: str, state: dict) -> None:
         json.dump(state, fh, indent=2)
 
 
+def _ensure_started(state: dict) -> str:
+    """Stamp (once) when this schedule began tracking, so tlc.pnl can scope the
+    'since cron start' running-stats window. Returns the started_at string."""
+    started = state.get("started_at")
+    if not started:
+        started = _utcnow().strftime(_BARTIME_FMT)
+        state["started_at"] = started
+    return started
+
+
 def acquire_lock(data_dir: str, name: str, stale_seconds: int) -> bool:
     """Atomically create the lock. False = a fresh lock exists (fire in flight).
     A stale lock (older than stale_seconds — crashed fire, reboot) is reclaimed."""
@@ -183,14 +193,19 @@ def resolve_against_bars(trade: dict, bars: List[dict],
 
 
 def build_outcome(trade: dict, result: str, resolved_at: str,
-                  bars_held: int) -> dict:
+                  bars_held: int, name: str = "", started_at: str = "") -> dict:
     """An outcomes.jsonl record for a resolved/expired trade. Public: shared by
-    the live gate and the backtest gate so both emit the same outcome shape."""
+    the live gate and the backtest gate so both emit the same outcome shape.
+
+    `name` (schedule) and `started_at` (when the schedule began tracking) let
+    tlc.pnl scope running stats to one schedule since it started; both default
+    empty so the backtest gate can keep calling this unchanged."""
     risk = abs(float(trade["entry"]) - float(trade["sl"]))
     reward = abs(float(trade["tp"]) - float(trade["entry"]))
     rr = (reward / risk) if risk > 0 else 0.0
     r = {"WIN": round(rr, 2), "LOSS": -1.0}.get(result, 0.0)
     return {
+        "name": name,
         "symbol": trade.get("symbol", ""),
         "timeframe": trade.get("timeframe", ""),
         "platform": trade.get("platform", ""),
@@ -203,6 +218,7 @@ def build_outcome(trade: dict, result: str, resolved_at: str,
         "opened_at": trade.get("opened_at", ""),
         "resolved_at": resolved_at,
         "bars_held": bars_held,
+        "started_at": started_at,
     }
 
 
@@ -242,6 +258,7 @@ def _check_phase(state: dict, config: dict,
     fire. `outcome` is the WIN/LOSS/EXPIRED record emitted this call (so callers
     that deliver through their own channel — the Hermes flow — can relay it), or
     None. Mutates state: outcome emitted / trade cleared / failure counter."""
+    started = _ensure_started(state)
     trade = state.get("open_trade")
     if not trade:
         return True, None
@@ -253,7 +270,7 @@ def _check_phase(state: dict, config: dict,
         # Un-walkable open time — expire rather than wedge the schedule forever.
         print(f"[trade_gate] {name}: tracked trade has no parseable opened_at — "
               f"expiring it", file=sys.stderr)
-        outcome = build_outcome(trade, "EXPIRED", "", 0)
+        outcome = build_outcome(trade, "EXPIRED", "", 0, name=name, started_at=started)
         _emit_outcome(outcome, config)
         state["open_trade"] = None
         state["consecutive_check_failures"] = 0
@@ -266,7 +283,7 @@ def _check_phase(state: dict, config: dict,
         # OPEN trade doesn't block later signals forever.
         print(f"[trade_gate] {name}: trade unresolved after {elapsed_bars} bars "
               f"(max {max_open}) — expiring, tracking stopped")
-        outcome = build_outcome(trade, "EXPIRED", "", elapsed_bars)
+        outcome = build_outcome(trade, "EXPIRED", "", elapsed_bars, name=name, started_at=started)
         _emit_outcome(outcome, config)
         state["open_trade"] = None
         state["consecutive_check_failures"] = 0
@@ -296,7 +313,7 @@ def _check_phase(state: dict, config: dict,
         return False, None
 
     result, exit_time, held = hit
-    outcome = build_outcome(trade, result, exit_time, held)
+    outcome = build_outcome(trade, result, exit_time, held, name=name, started_at=started)
     _emit_outcome(outcome, config)
     state["open_trade"] = None
     state["consecutive_check_failures"] = 0
@@ -323,6 +340,7 @@ def _record_phase(state: dict, config: dict, symbol: str, timeframe: str,
     """Scan verdicts appended after this fire's checkpoint; the last LONG/SHORT
     matching this schedule becomes the tracked open trade. Always advances the
     checkpoint. Never raises — recording must not fail the cron job."""
+    _ensure_started(state)
     data_dir = config.get("data_dir", "data")
     lines = _read_verdict_lines(data_dir)
     checkpoint = int(state.get("verdicts_checkpoint", 0))

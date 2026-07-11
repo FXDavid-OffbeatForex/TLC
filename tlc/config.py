@@ -47,7 +47,19 @@ DEFAULTS: Dict[str, Any] = {
     "agent_cmd": "claude -p",               # the CLI invoked when engine == agent
     "alerts": {
         "enabled": [],                      # e.g. ["telegram"] — secrets live in .env
-        "telegram": {"quiet_no_trade": True},
+        # show_pnl: append a running PnL footer (win rate, net R, profit factor)
+        # to each scheduled alert, aggregated from data/outcomes.jsonl since the
+        # schedule started. Renders only once ≥1 trade has resolved.
+        "telegram": {"quiet_no_trade": True, "show_pnl": True},
+    },
+    # Running-PnL footer (tlc/pnl.py). R-multiples always shown; a CURRENCY
+    # estimate is layered on only when account_balance is set — per-trade cash at
+    # risk = account_balance * risk_per_trade_pct/100 (fixed-fractional, an
+    # estimate, NON-compounding).
+    "pnl": {
+        "account_balance": None,            # e.g. 10000 → enables the $ estimate
+        "risk_per_trade_pct": 1.0,          # % of balance risked per trade (= 1R)
+        "currency": "USD",
     },
     # Sequential open-trade gate for SCHEDULED fires only (PRD §2.13/§2.19): one
     # open position per schedule, like MBT's sequential backtest. While the last

@@ -375,16 +375,58 @@ scan EURUSD every hour and alert me          # plain English
 python3 -m tlc.cron list                      # what's scheduled
 python3 -m tlc.cron stop EURUSD_1h            # remove it
 python3 -m tlc.trade_gate status EURUSD_1h    # what's the open trade, if any
+python3 -m tlc.trade_gate clear EURUSD_1h     # force-clear a stuck trade
 ```
-
-**One open trade per schedule.** A schedule won't re-alert while the trade it last
-alerted is still open — it skips the fire (no LLM call at all) until price hits that
-trade's stop or target, then pushes a WIN/LOSS outcome and resumes normally. This is
-the same sequential rule the backtester scores by. Opt out with `--no-gate`.
 
 **On each fire:** open-trade gate check → (if clear) build a fresh packet → council
 votes blind → Chairman verdict → logged to `data/` → a trade verdict is pushed to
 Telegram (NO_TRADE stays silent by default) and tracked as the new open trade.
+
+### The sequential open-trade gate
+
+**One open trade per schedule.** A schedule won't re-alert while the trade it last
+alerted is still open — it skips the fire entirely (no LLM call, no cost) until price
+hits that trade's stop or target, then pushes a WIN/LOSS outcome (with a running PnL
+summary — see below) and resumes normally.
+
+Two safety nets keep a schedule from getting stuck:
+- **Unresolved forever?** A trade still open after `max_open_bars` (default 1000) bars
+  expires automatically — tracking stops, you get a notice, and the schedule resumes.
+- **Can't confirm a trade's outcome?** (a data-feed hiccup, say) the gate plays it safe
+  and skips the fire rather than risk alerting twice. After `warn_after_failures`
+  (default 3) skips in a row, you get a one-time Telegram warning telling you to check
+  `trade_gate status` or force it clear.
+
+Opt a single schedule out with `--no-gate`; kill it globally with
+`open_trade_gate.enabled: false` in `config.yaml`.
+
+### Running PnL, right in the alert
+
+Every scheduled alert can now carry a running scoreboard — how this schedule has done
+since you started it — no separate dashboard needed:
+
+```
+📈 Track record · since 2026-07-11 00:00
+8 closed · 5W / 3L · 1exp · 62% win
+Net +7.0R · PF 3.33 · Exp +0.88R · maxDD -2.0R
+≈ +700 USD (100/trade risk)
+```
+
+**What the numbers mean:** every trade is measured in **R** — multiples of what you
+risked on it (win 2R = you made twice your risk; lose 1R = you lost exactly what you
+risked). That keeps the stats meaningful across symbols and position sizes without TLC
+needing to know your account balance.
+- **Net** — total R won or lost so far
+- **PF (profit factor)** — total won ÷ total lost; above 1 means it's profitable overall
+- **Exp (expectancy)** — the average R per trade
+- **maxDD** — the deepest dip from a peak, in R
+
+Want an actual dollar figure too? Set `pnl.account_balance` in `config.yaml` and TLC adds
+a `≈ $ amount` line, assuming a fixed % risk per trade (`pnl.risk_per_trade_pct`, default
+1%) — an estimate, not a read of your real account.
+
+Toggle the whole footer with `alerts.telegram.show_pnl` (on by default). Stats reset
+whenever a schedule is cleared and starts tracking again.
 
 **Many symbols?** Schedules that share an interval **auto-stagger** across the cycle — the
 first fires on the tick, the next at +30m, then +15m, +45m, … — so they never all launch at
@@ -406,6 +448,8 @@ TELEGRAM_CHAT_ID=987654321
 # config.yaml
 alerts:
   enabled: [telegram]
+  telegram:
+    show_pnl: true          # append a running-PnL footer (default on)
 ```
 
 ### Two engines — your subscription, or your own key

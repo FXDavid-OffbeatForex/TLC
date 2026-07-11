@@ -13,6 +13,7 @@ They read the same chart, vote <i>blind</i>, and a <b>Chairman</b> issues one ri
   <img alt="Data: TradingView · MT5" src="https://img.shields.io/badge/Data-TradingView%20%C2%B7%20MT5-e8b64c">
   <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-3ddc84">
   <a href="https://fxdavid-offbeatforex.github.io/TLC/"><img alt="VPS Sizer — live" src="https://img.shields.io/badge/%E2%96%B6_VPS_Sizer-live-5b8cff"></a>
+  <a href="https://youtu.be/3cNG4SD5MCA"><img alt="Watch the walkthrough" src="https://img.shields.io/badge/%E2%96%B6_Walkthrough-YouTube-FF0000?logo=youtube&logoColor=white"></a>
 </p>
 
 <sub>
@@ -41,6 +42,14 @@ Ask **one** legend for their read, or convene the whole room.
 - The Chairman aggregates all ballots under a strict consensus rule and issues a single verdict with position sizing
 - Verdicts are logged, scored, and optionally pushed to Telegram on a schedule
 - You can forge your own legends from famous names or plain-English strategies, and assemble custom councils
+
+<div align="center">
+
+[![I Built an AI Trading System With 10 Legendary Traders — Gann, Wyckoff, DeMark](https://img.youtube.com/vi/3cNG4SD5MCA/maxresdefault.jpg)](https://youtu.be/3cNG4SD5MCA)
+
+<sub>▶ Watch the walkthrough on YouTube</sub>
+
+</div>
 
 ---
 

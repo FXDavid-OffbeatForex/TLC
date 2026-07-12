@@ -44,9 +44,10 @@ from .sinks import LocalJsonSink
 DEFAULT_MODELS = dict(_CONFIG_DEFAULTS["models"])
 
 # Cap per-call output so OpenRouter's cost pre-check doesn't reserve credit for a
-# model's full max output (e.g. 65536) on every call. 2048 leaves headroom for a
-# model that reasons a bit before emitting the ballot JSON, while staying cheap.
-LEGEND_MAX_TOKENS = 2048
+# model's full max output (e.g. 65536) on every call. Reasoning tokens count
+# against this cap even with reasoning disabled below (some models ignore
+# enabled:false and only honor exclude), so leave real headroom.
+LEGEND_MAX_TOKENS = 4096
 
 # The prompt is split in two so the heavy, identical part can be prompt-cached
 # (§2.19). SHARED_PREFIX is byte-identical across all legends in a convene — the
@@ -168,6 +169,12 @@ def _openrouter(prompt: str, model: str, timeout: int) -> str:
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
         "max_tokens": LEGEND_MAX_TOKENS,
+        # Free-tier models are mostly reasoning models: hidden reasoning burns
+        # the max_tokens budget, and some (nemotron-nano) even put the ballot
+        # inside message.reasoning leaving content empty. enabled:false turns
+        # reasoning off where supported; exclude:true forces the answer into
+        # content on models that reason anyway. Non-reasoning models ignore it.
+        "reasoning": {"exclude": True, "enabled": False},
     }).encode("utf-8")
     req = urllib.request.Request(
         "https://openrouter.ai/api/v1/chat/completions",

@@ -50,7 +50,7 @@ from .config import load_config
 from .cron import timeframe_seconds
 from .notify import build_alert_sinks, notify_outcome
 from .providers import get_provider
-from .providers.routing import resolve_platform
+from .providers.routing import _CRYPTO_BASES, _CRYPTO_QUOTES, resolve_platform
 from .sinks import LocalJsonSink
 
 STATE_DIR = "schedule_state"
@@ -148,14 +148,27 @@ def release_lock(data_dir: str, name: str) -> None:
 
 def _norm_symbol(symbol: str, config: dict) -> str:
     """Comparable form of a symbol across platforms: strip a TV exchange prefix
-    (NASDAQ:AAPL → AAPL) and the configured MT5 broker suffix (EURUSDzero →
-    EURUSD), upper-case. Deliberately NOT provider.resolve_symbol(): that needs
-    an exchange_map hit for TV stocks and would silently never match."""
+    (NASDAQ:AAPL → AAPL), the configured MT5 broker suffix (EURUSDzero →
+    EURUSD), and — for crypto — the quote currency, upper-case. Deliberately
+    NOT provider.resolve_symbol(): that needs an exchange_map hit for TV stocks
+    and would silently never match.
+
+    The quote-currency strip matters because tvremix.py::resolve_symbol always
+    rewrites a crypto quote to USDT (BTCUSD → BINANCE:BTCUSDT) regardless of
+    what a schedule was launched with. Without it, a schedule started as
+    "BTCUSD" never matches its own verdicts' resolved "BINANCE:BTCUSDT"
+    symbol, so record phase can never arm a tracked trade — silently disabling
+    the open-trade gate for that schedule. Confirmed live 2026-07-12:
+    BTCUSD_4h fired two overlapping LONGs 4h apart with zero gating between
+    them because of exactly this mismatch."""
     s = str(symbol).split(":")[-1].strip().upper()
     suffix = (((config.get("platforms") or {}).get("mt5") or {})
               .get("symbol_suffix") or "").upper()
     if suffix and s.endswith(suffix) and len(s) > len(suffix):
         s = s[: -len(suffix)]
+    for q in sorted(_CRYPTO_QUOTES, key=len, reverse=True):
+        if s.endswith(q) and s[: -len(q)] in _CRYPTO_BASES:
+            return s[: -len(q)]
     return s
 
 
